@@ -4,16 +4,31 @@
 import sqlite3
 import subprocess
 import sys
+import shutil
 import os
 import shutil
 import re
 import nltk
+import platform
+import cursor
+import time
 from html.parser import HTMLParser
 
-#TODO:
-#0.Do not require mobitool and calibre binaries
-#1.Deside how to hande difficulty of word
-#2.Get metadata of kll.en.en.klld for initalization of LanguageLayerDB
+DEBUG = False
+
+class WiseException(Exception):
+    def __init__(self, message, desc):
+        super().__init__(message)
+
+        self.desc = desc
+
+def get_resource_path(relative_path):
+    try:
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.dirname(os.path.realpath(__file__))
+
+    return os.path.join(base_path, relative_path)
 
 # Got it from https://gist.github.com/aubricus/f91fb55dc6ba5557fbab06119420dd6a
 # Print iterations progress
@@ -28,15 +43,25 @@ def print_progress(iteration, total, prefix='', suffix='', decimals=1, bar_lengt
         decimals    - Optional  : positive number of decimals in percent complete (Int)
         bar_length  - Optional  : character length of bar (Int)
     """
+    if iteration == 0:
+        cursor.hide()
+
+
+    bar_length = shutil.get_terminal_size()[0] // 2
+
     str_format = "{0:." + str(decimals) + "f}"
     percents = str_format.format(100 * (iteration / float(total)))
     filled_length = int(round(bar_length * iteration / float(total)))
     bar = '█' * filled_length + '-' * (bar_length - filled_length)
 
-    sys.stdout.write('\r%s |%s| %s%s %s' % (prefix, bar, percents, '%', suffix)),
+    progress_bar = "\r%s |%s| %s%s %s" % (prefix, bar, percents, '%', suffix)
+
+    sys.stdout.write(progress_bar)
+    sys.stdout.flush()
 
     if iteration == total:
         sys.stdout.write('\n')
+        cursor.show()
     sys.stdout.flush()
 
 def get_wordnet_pos(treebank_tag):
@@ -56,8 +81,7 @@ def usage():
 
 class WordFilter():
     def __init__(self):
-        script_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)))
-        filter_path = os.path.join(script_dir, "filter.txt")
+        filter_path = get_resource_path("filter.txt")
         with open(filter_path, 'rt') as f:
             self.do_not_take = []
             for line in f:
@@ -143,7 +167,7 @@ class LanguageLayerDB():
             new_gloss = (start, None, 1, sense_id, 0)
             self.cursor.execute(query, new_gloss)
         except sqlite3.Error as e:
-            print(e)
+            pass
 
 
 class RawmlRarser(HTMLParser):
@@ -160,7 +184,7 @@ class RawmlRarser(HTMLParser):
         return self.result
 
     def handle_starttag(self, tag, attrs):
-        self.tag_content_start = self.getpos()[1] + len(self.get_starttag_text())
+        pass
 
     def handle_endtag(self, tag):
         pass
@@ -170,33 +194,104 @@ class RawmlRarser(HTMLParser):
         for match in re.finditer(r'[A-Za-z\']+', paragraph_text):
             word = paragraph_text[match.start():match.end()]
             if self.wf.is_take_word(word):
-                word_offset = self.tag_content_start + match.start()
+                word_offset = self.getpos()[1] + match.start()
                 word_byte_offset = self.last_token_bt_offset + len(self.bt[self.last_token_offset:word_offset].encode('utf-8'))
                 self.last_token_offset = word_offset
                 self.last_token_bt_offset = word_byte_offset
                 self.result.append((word_byte_offset, word))
 
+def get_path_to_mobitool():
+    path_to_third_party = get_resource_path("third_party")
+
+    if platform.system() == "Linux":
+        path_to_mobitool = os.path.join(path_to_third_party, "mobitool-linux-i386")
+    if platform.system() == "Windows":
+        path_to_mobitool = os.path.join(path_to_third_party, "mobitool-win32.exe")
+
+    return path_to_mobitool
+
 def get_book_asin(path_to_book):
-    path_to_mobitool = os.path.join(os.path.dirname(os.path.realpath(__file__)), "mobitool/mobitool-linux-i386")
-    proc = subprocess.Popen([path_to_mobitool, path_to_book], stdout=subprocess.PIPE)
-    out, err = proc.communicate()
-    book_metadata = out.decode("utf-8")
-    match = re.search("ASIN: (\S+)", book_metadata)
-    if match:
-        book_asin = match.group(1)
-        return book_asin
-    else:
-        return None
+    path_to_mobitool = get_path_to_mobitool()
+
+    command = [path_to_mobitool, path_to_book]
+    try:
+        proc = subprocess.Popen(command, stdout=subprocess.PIPE)
+        out, err = proc.communicate()
+    except Exception as e:
+        command_str = " ".join(command)
+        description = ["Failed to run command", command_str, e]
+        raise WiseException("", description)
+
+    try:
+        book_metadata = out.decode("utf-8")
+        match = re.search("ASIN: (\S+)", book_metadata)
+        if match:
+            book_asin = match.group(1)
+            return book_asin
+        else:
+            return None
+    except Exception as e:
+        message = ["Failed to decode mobitool output"]
+        raise WiseException("", message)
+
+def get_rawml_content(path_to_book):
+    path_to_mobitool = get_path_to_mobitool()
+
+    try:
+        proc = subprocess.Popen([path_to_mobitool, '-d', path_to_book], stdout=subprocess.PIPE)
+        out, err = proc.communicate()
+    except Exception as e:
+        command_str = " ".join(command)
+        description = ["Failed to run command", command_str, e]
+        raise WiseException("", description)
+
+    try:
+        book_name = os.path.basename(path_to_book)
+        book_name_without_ex = os.path.splitext(book_name)[0]
+        rawml_name = "{}.rawml".format(book_name_without_ex)
+        path_to_rawml = os.path.join(os.path.dirname(path_to_book), rawml_name)
+        with open(path_to_rawml, 'rt', encoding='utf-8') as f:
+            book_content = f.read()
+        os.remove(path_to_rawml)
+        return book_content
+    except UnicodeDecodeError as e:
+        message = ["Failed to open {} - {}".format(path_to_rawml, e)]
+        raise WiseException("", message)
+
+def check_dependencies():
+    try:
+        proc = subprocess.Popen(['ebook-convert'], stdout=subprocess.PIPE)
+        out, err = proc.communicate()
+    except FileNotFoundError as e:
+        raise ValueError("Calibre not found")
+
+    path_to_nltk = get_resource_path("nltk_data")
+    if os.path.exists(path_to_nltk) == False:
+        raise ValueError(path_to_nltk + " not found")
+
+    path_to_mobitool = get_path_to_mobitool()
+    if os.path.exists(path_to_mobitool) == False:
+        raise ValueError(path_to_mobitool + " not found")
+
 
 def main():
     if len(sys.argv) < 2:
         return usage()
+    print("[.] Checking dependenices")
+    try:
+        check_dependencies()
+    except ValueError as e:
+        print("  [-] Checking failed:")
+        print("    |", e)
+        return
+
+    path_to_script = os.path.dirname(os.path.realpath(__file__))
+    path_to_nltk = os.path.join(path_to_script, "nltk_data")
+    nltk.data.path = [ path_to_nltk ] + nltk.data.path
     
-    path_to_book = sys.argv[1]
-    if os.path.exists(sys.argv[1]):
-        path_to_book = os.path.abspath(sys.argv[1])
-    else:
-        print("Cannot find " + sys.argv[1])
+    path_to_book = os.path.abspath(sys.argv[1])
+    if os.path.exists(sys.argv[1]) == False:
+        print("[-] Wrong path to book: {}".format(path_to_book))
         sys.exit()
 
     book_name = os.path.basename(path_to_book)
@@ -205,29 +300,40 @@ def main():
     result_dir_path = os.path.join(os.path.dirname(path_to_book), result_dir_name)
     new_book_path = os.path.join(result_dir_path, book_name)
 
+    if os.path.exists(result_dir_path):
+        shutil.rmtree(result_dir_path)
+
     if not os.path.exists(result_dir_path):
         os.makedirs(result_dir_path)
 
-    print("Getting ASIN of the book")
-    book_asin = get_book_asin(path_to_book)
-    if book_asin != None:
-        shutil.copy(path_to_book, new_book_path)
-    else:
-        print("There isn't ASIN, converting mobi 2 mobi...")
-        #Convert mobi to mobi by calibre and get ASIN that calibre assign to converted book
+    print("[.] Converting mobi 2 mobi to generate ASIN")
+    #Convert mobi to mobi by calibre and get ASIN that calibre assign to converted book
+    try:
         proc = subprocess.Popen(['ebook-convert', path_to_book, new_book_path], stdout=subprocess.PIPE)
         out, err = proc.communicate()
-        book_asin = get_book_asin(new_book_path)
+    except Exception as e:
+        print("  [-] Failed to convert mobi 2 mobi:")
+        print("    |", e)
+        return
     path_to_book = new_book_path
 
-    path_to_mobitool = os.path.join(os.path.dirname(os.path.realpath(__file__)), "mobitool/mobitool-linux-i386")
-    proc = subprocess.Popen([path_to_mobitool, '-d', path_to_book], stdout=subprocess.PIPE)
-    out, err = proc.communicate()
+    print("[.] Getting ASIN")
+    try:
+        book_asin = get_book_asin(new_book_path)
+    except WiseException as e:
+        print("  [-] Can't get ASIN:")
+        for item in e.desc:
+            print("    |", item)
+        return
 
-    rawml_name = "{}.rawml".format(book_name_without_ex)
-    path_to_rawml = os.path.join(os.path.dirname(path_to_book), rawml_name)
-    with open(path_to_rawml, 'rt') as f:
-        book_content = f.read()
+    print("[.] Getting rawml content of the book")
+    try:
+        book_content = get_rawml_content(path_to_book)
+    except WiseException as e:
+        print("  [-] Can't get rawml content:")
+        print("    |", e)
+        return
+
 
     sdr_dir_name = "{}.sdr".format(book_name_without_ex)
     sdr_dir_path = os.path.join(result_dir_path, sdr_dir_name)
@@ -236,19 +342,18 @@ def main():
 
     LangLayerDb = LanguageLayerDB(sdr_dir_path, book_asin)
 
-    print("Collecting words...")
+    print("[.] Collecting words")
     parser = RawmlRarser(book_content)
     words = parser.parse()
     count = len(words)
     if count == 0:
-        print("There are no suitable words in the book")
+        print("[.] There are no suitable words in the book")
         return
     else:
-        print("Count of words: {}".format(count))
+        print("[.] Count of words: {}".format(count))
 
     lookup = {}
-    script_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)))
-    senses_path = os.path.join(script_dir, "senses.csv")
+    senses_path = get_resource_path("senses.csv")
     with open(senses_path, 'rt') as f:
         for line in f:
             l = line.strip()
@@ -257,10 +362,12 @@ def main():
             word, sense_id = l.split(',')
             lookup[word] = sense_id
 
-
     lemmatizer = nltk.WordNetLemmatizer()
-    print_progress(0, count, prefix='Processing words:', suffix='Complete')
+    prfx = "[.] Processing words: "
+    print_progress(0, count, prefix=prfx, suffix='')
     LangLayerDb.start_transaction()
+    if DEBUG == True:
+        f = open('log.txt', 'a')
     for i, gloss in enumerate(words):
         word_offset = gloss[0]
         word = gloss[1]
@@ -270,21 +377,18 @@ def main():
         word = lemmatizer.lemmatize(word, pos=pos_tag_wordnet)
         if word in lookup:
             sense_id = lookup[word]
+            if DEBUG == True:
+                f.write("{} - {} - {}\n".format(word_offset, word, sense_id))
             LangLayerDb.add_gloss(word_offset, sense_id)
-        print_progress(i+1, count, prefix='Processing words:', suffix='Complete')
+        print_progress(i+1, count, prefix=prfx, suffix='')
 
+    if DEBUG == True:
+        f.close()
     LangLayerDb.end_transaction()
     LangLayerDb.close_db()
-    os.remove(path_to_rawml)
+
+    print("[.] Success!")
     print("Now copy this folder: \"{}\" to your Kindle".format(result_dir_path))
-
-def test_parser():
-    text = """<p height="0pt" width="2em" align="justify"><font color="#000000">And, if you aren't from my school, which I assume everybody who isn't a fourteen to eighteen year old in Talket County, Wisconsin isn't, then to inform you: a blue slip of paper is your only ticket </font><i><font color="#000000">out</font></i><font color="#000000"> during the seven hour period of in-service time we spend here every week from Monday to Friday. Unless, of course, there's an unintentional fire, or an active shooter roaming the hallways, or something of that kind of sort. I say unintentional fires only, though, because all eight hundred teenaged students that go here can recall the 'Great Blaze of Valentine's Day', which occurred a little over a year ago when some nerdy kid in chemistry class set sparks to Kelsey Gordon's ponytail with a flaming flask of acetone. </font></p>"""
-    parser = RawmlRarser(text)
-    words = parser.parse()
-    for offset, word in words:
-        print(word)
-
 
 if __name__ == "__main__":
     main()
