@@ -22,3 +22,5 @@ To run the script you need to install:
 Now you can run wisecreator:
     ./main.py PATH_TO_YOUR_MOBI_BOOK
 
+To develop:
+You need pyinstaller to pack executables. You can install it with pip.

@@ -46,23 +46,20 @@ def print_progress(iteration, total, prefix='', suffix='', decimals=1, bar_lengt
     if iteration == 0:
         cursor.hide()
 
-
     bar_length = shutil.get_terminal_size()[0] // 2
 
     str_format = "{0:." + str(decimals) + "f}"
     percents = str_format.format(100 * (iteration / float(total)))
     filled_length = int(round(bar_length * iteration / float(total)))
-    bar = '█' * filled_length + '-' * (bar_length - filled_length)
+    bar = '+' * filled_length + '-' * (bar_length - filled_length)
 
     progress_bar = "\r%s |%s| %s%s %s" % (prefix, bar, percents, '%', suffix)
 
-    sys.stdout.write(progress_bar)
-    sys.stdout.flush()
+    print(progress_bar, end='', flush=True)
 
     if iteration == total:
-        sys.stdout.write('\n')
+        print("")
         cursor.show()
-    sys.stdout.flush()
 
 def get_wordnet_pos(treebank_tag):
     if treebank_tag.startswith('J'):
@@ -76,10 +73,12 @@ def get_wordnet_pos(treebank_tag):
     else:
         return nltk.corpus.wordnet.NOUN
 
+
 def usage():
     print("./main.py input_book")
 
-class WordFilter():
+
+class WordFilter:
     def __init__(self):
         filter_path = get_resource_path("filter.txt")
         with open(filter_path, 'rt') as f:
@@ -239,8 +238,9 @@ def get_book_asin(path_to_book):
 def get_rawml_content(path_to_book):
     path_to_mobitool = get_path_to_mobitool()
 
+    command = [path_to_mobitool, '-d', path_to_book]
     try:
-        proc = subprocess.Popen([path_to_mobitool, '-d', path_to_book], stdout=subprocess.PIPE)
+        proc = subprocess.Popen(command, stdout=subprocess.PIPE)
         out, err = proc.communicate()
     except Exception as e:
         command_str = " ".join(command)
@@ -262,8 +262,7 @@ def get_rawml_content(path_to_book):
 
 def check_dependencies():
     try:
-        proc = subprocess.Popen(['ebook-convert'], stdout=subprocess.PIPE)
-        out, err = proc.communicate()
+        subprocess.check_output('ebook-convert --version', shell=True)
     except FileNotFoundError as e:
         raise ValueError("Calibre not found")
 
@@ -311,8 +310,8 @@ def main():
     print("[.] Converting mobi 2 mobi to generate ASIN")
     #Convert mobi to mobi by calibre and get ASIN that calibre assign to converted book
     try:
-        proc = subprocess.Popen(['ebook-convert', path_to_book, new_book_path], stdout=subprocess.PIPE)
-        out, err = proc.communicate()
+        cmd_str = "{} \"{}\" \"{}\"".format('ebook-convert', path_to_book, new_book_path)
+        out = subprocess.check_output(cmd_str, shell=True)
     except Exception as e:
         print("  [-] Failed to convert mobi 2 mobi:")
         print("    |", e)
