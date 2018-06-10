@@ -1,4 +1,4 @@
 0.Do not require mobitool and calibre binaries
-1.Deside how to hande difficulty of word
-2.Get metadata of kll.en.en.klld for initalization of LanguageLayerDB
-3.Experiment with dictionaries for other laguages
+1.Decide how to hande difficulty of word
+2.Get metadata of kll.en.en.klld for initialization of LanguageLayerDB
+3.Experiment with dictionaries for other languages
