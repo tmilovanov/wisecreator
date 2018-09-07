@@ -355,8 +355,9 @@ def main():
 
     lookup = {}
     senses_path = get_resource_path("senses.csv")
-    with open(senses_path, 'rt') as f:
-        for line in f:
+    with open(senses_path, 'rb') as f:
+        f = f.read().decode('utf-8')
+        for line in f.splitlines():
             l = line.strip()
             if l[0] == '"':
                 continue
