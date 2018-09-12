@@ -155,15 +155,15 @@ class LanguageLayerDB():
 
     def start_transaction(self):
         self.cursor.execute("BEGIN TRANSACTION")
-    
+
     def end_transaction(self):
         self.conn.commit()
 
-    def add_gloss(self, start, sense_id):
+    def add_gloss(self, start, sense_id, difficulty):
         self.open_db()
         try:
             query = "INSERT INTO glosses VALUES (?,?,?,?,?)"
-            new_gloss = (start, None, 1, sense_id, 0)
+            new_gloss = (start, None, difficulty, sense_id, 0)
             self.cursor.execute(query, new_gloss)
         except sqlite3.Error as e:
             pass
@@ -289,7 +289,7 @@ def main():
     path_to_script = os.path.dirname(os.path.realpath(__file__))
     path_to_nltk = os.path.join(path_to_script, "nltk_data")
     nltk.data.path = [ path_to_nltk ] + nltk.data.path
-    
+
     path_to_book = os.path.abspath(sys.argv[1])
     if os.path.exists(sys.argv[1]) == False:
         print("[-] Wrong path to book: {}".format(path_to_book))
@@ -364,6 +364,17 @@ def main():
             word, sense_id = l.split(',')
             lookup[word] = sense_id
 
+    difficulty_dict = {}
+    ngsl_path = get_resource_path("ngsl.csv")
+    with open(senses_path, 'rb') as f:
+        f = f.read().decode('utf-8')
+        for line in f.splitlines():
+            l = line.strip()
+            if l[0] == '"':
+                continue
+            word, coverage = l.split(',')
+            difficulty_dict[word] = float(coverage)
+
     lemmatizer = nltk.WordNetLemmatizer()
     prfx = "[.] Processing words: "
     print_progress(0, count, prefix=prfx, suffix='')
@@ -381,7 +392,16 @@ def main():
             sense_id = lookup[word]
             if DEBUG == True:
                 f.write("{} - {} - {}\n".format(word_offset, word, sense_id))
-            LangLayerDb.add_gloss(word_offset, sense_id)
+            difficulty = 1
+            if word in difficulty_dict:
+                coverage = difficulty_dict[word]
+                if (coverage < 0.96):
+                    difficulty = 4
+                elif coverage < 0.992:
+                    difficulty = 3
+                elif coverage < 0.9984:
+                    difficulty = 2
+            LangLayerDb.add_gloss(word_offset, sense_id, difficulty)
         print_progress(i+1, count, prefix=prfx, suffix='')
 
     if DEBUG == True:
