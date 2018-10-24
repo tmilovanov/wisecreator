@@ -1,4 +1,4 @@
-#WiseCreator
+# WiseCreator
 
 You can create wordwise enabled .mobi files by using
 - either [standalone executables](#standalone) or
@@ -6,7 +6,7 @@ You can create wordwise enabled .mobi files by using
 
 ---
 
-##standalone
+## standalone
 
 1. You need to have [calibre](https://calibre-ebook.com/) on your device.
 2. If you are on windows, download [executables/wisecreator.exe](https://github.com/tmilovanov/wisecreator/blob/master/executables/wisecreator.exe)
@@ -17,7 +17,7 @@ You can create wordwise enabled .mobi files by using
 
 *You can move standalone wisecreator file anywhere you like on your computer, but if you are using calibre portable simply copy that to /Calibre folder and run above command from that location*  
 
-##script
+## script
 
 1.  You need to have [calibre](https://calibre-ebook.com/) on your device.  
 2.	To run the script you need to have [Python3](https://www.python.org/downloads/)  
