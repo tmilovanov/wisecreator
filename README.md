@@ -38,7 +38,7 @@ You can create wordwise enabled .mobi files for Amazon Kindle by using
 3. Rename `LanguageLayer.en.ASIN.kll` to `WordWise.en.ASIN.db`, you can get ASIN using `mobitool-win32.exe filepath`
 4. Push the .mobi book to `Android/data/com.amazon.kindle/files`
 5. Push the WordWise.en.ASIN.db file to `/data/user/0/com.amazon.kindle/databases`. You need root access for this.
-6. set the permissions for the wordwise file by running `chcon u:object_r:app_data_file:s0:c512,c768 [filename].db` rom a terminal emulator app or via adb shell at the above path.
+6. set the permissions for the wordwise file by running `chcon u:object_r:app_data_file:s0:c512,c768 [filename].db` from a terminal emulator app or via adb shell at the above path.
 
 ---
 
