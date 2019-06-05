@@ -6,12 +6,11 @@ import subprocess
 import sys
 import shutil
 import os
-import shutil
 import re
 import nltk
 import platform
 import cursor
-import time
+# import time
 from html.parser import HTMLParser
 
 DEBUG = False
@@ -307,25 +306,29 @@ def main():
     if not os.path.exists(result_dir_path):
         os.makedirs(result_dir_path)
 
-    print("[.] Converting mobi 2 mobi to generate ASIN")
-    #Convert mobi to mobi by calibre and get ASIN that calibre assign to converted book
-    try:
-        cmd_str = "{} \"{}\" \"{}\"".format('ebook-convert', path_to_book, new_book_path)
-        out = subprocess.check_output(cmd_str, shell=True)
-    except Exception as e:
-        print("  [-] Failed to convert mobi 2 mobi:")
-        print("    |", e)
-        return
-    path_to_book = new_book_path
-
     print("[.] Getting ASIN")
     try:
-        book_asin = get_book_asin(new_book_path)
+        book_asin = get_book_asin(path_to_book)
     except WiseException as e:
         print("  [-] Can't get ASIN:")
         for item in e.desc:
             print("    |", item)
         return
+    
+    if book_asin == None:
+        print("  [-] The original book doesn't have ASIN:")
+        print("    [.] Converting mobi 2 mobi to generate ASIN")
+        try:
+            cmd_str = "{} {} {}".format('ebook-convert', path_to_book, new_book_path)
+            out = subprocess.check_output(cmd_str, shell=True)
+        except Exception as e:
+            print("    [-] Failed to convert mobi 2 mobi:")
+            print("      |", e)
+            return
+        path_to_book = new_book_path
+        book_asin = get_book_asin(path_to_book)
+    else:
+        shutil.copyfile(path_to_book, new_book_path)
 
     print("[.] Getting rawml content of the book")
     try:
