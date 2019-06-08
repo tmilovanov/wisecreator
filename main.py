@@ -357,7 +357,7 @@ def main():
         print("[.] Count of words: {}".format(count))
 
     lookup = {}
-    senses_path = get_resource_path("senses.csv")
+    senses_path = get_resource_path("lemmas.csv")
     with open(senses_path, 'rb') as f:
         f = f.read().decode('utf-8')
         for line in f.splitlines():
