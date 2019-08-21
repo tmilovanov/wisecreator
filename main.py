@@ -4,7 +4,6 @@
 import sqlite3
 import subprocess
 import sys
-import shutil
 import os
 import shutil
 import re
@@ -275,31 +274,49 @@ def check_dependencies():
         raise ValueError(path_to_mobitool + " not found")
 
 
-def main():
-    if len(sys.argv) < 2:
-        return usage()
-    print("[.] Checking dependenices")
+def get_words(path_to_book):
+    print("[.] Getting rawml content of the book")
     try:
-        check_dependencies()
-    except ValueError as e:
-        print("  [-] Checking failed:")
+        book_content = get_rawml_content(path_to_book)
+    except WiseException as e:
+        print("  [-] Can't get rawml content:")
         print("    |", e)
-        return
+        raise ValueError()
 
-    path_to_script = os.path.dirname(os.path.realpath(__file__))
-    path_to_nltk = os.path.join(path_to_script, "nltk_data")
-    nltk.data.path = [ path_to_nltk ] + nltk.data.path
-    
-    path_to_book = os.path.abspath(sys.argv[1])
-    if os.path.exists(sys.argv[1]) == False:
-        print("[-] Wrong path to book: {}".format(path_to_book))
-        sys.exit()
+    print("[.] Collecting words")
+    parser = RawmlRarser(book_content)
+    words = parser.parse()
+    return words
 
-    book_name = os.path.basename(path_to_book)
-    book_name_without_ex = os.path.splitext(book_name)[0]
-    result_dir_name = "{}-WordWised".format(book_name_without_ex)
-    result_dir_path = os.path.join(os.path.dirname(path_to_book), result_dir_name)
-    new_book_path = os.path.join(result_dir_path, book_name)
+def get_or_create_book_asin(path_to_book):
+    print("[.] Converting mobi 2 mobi to generate ASIN")
+    #Convert mobi to mobi by calibre and get ASIN that calibre assign to converted book
+    try:
+        converted_book_path = os.path.join(os.path.dirname(path_to_book), "tmp_book_{}".format(os.path.basename(path_to_book)))
+
+        cmd_str = "{} \"{}\" \"{}\"".format('ebook-convert', path_to_book, converted_book_path)
+        out = subprocess.check_output(cmd_str, shell=True)
+
+        shutil.move(converted_book_path, path_to_book)
+    except Exception as e:
+        print("  [-] Failed to convert mobi 2 mobi:")
+        print("    |", e)
+        raise ValueError()
+
+    print("[.] Getting ASIN")
+    try:
+        book_asin = get_book_asin(path_to_book)
+    except WiseException as e:
+        print("  [-] Can't get ASIN:")
+        for item in e.desc:
+            print("    |", item)
+        raise ValueError()
+
+    return book_asin
+
+def get_output_dir_path(output_path, book_name):
+    result_dir_name = "{}-WordWised".format(book_name)
+    result_dir_path = os.path.join(output_path, result_dir_name)
 
     if os.path.exists(result_dir_path):
         shutil.rmtree(result_dir_path)
@@ -307,51 +324,45 @@ def main():
     if not os.path.exists(result_dir_path):
         os.makedirs(result_dir_path)
 
-    print("[.] Converting mobi 2 mobi to generate ASIN")
-    #Convert mobi to mobi by calibre and get ASIN that calibre assign to converted book
-    try:
-        cmd_str = "{} \"{}\" \"{}\"".format('ebook-convert', path_to_book, new_book_path)
-        out = subprocess.check_output(cmd_str, shell=True)
-    except Exception as e:
-        print("  [-] Failed to convert mobi 2 mobi:")
-        print("    |", e)
-        return
-    path_to_book = new_book_path
+    return result_dir_path
 
-    print("[.] Getting ASIN")
-    try:
-        book_asin = get_book_asin(new_book_path)
-    except WiseException as e:
-        print("  [-] Can't get ASIN:")
-        for item in e.desc:
-            print("    |", item)
-        return
+def process(path_to_book, output_path):
+    if os.path.exists(path_to_book) == False:
+        print("[-] Wrong path to book: {}".format(path_to_book))
+        sys.exit()
 
-    print("[.] Getting rawml content of the book")
+    path_to_script = os.path.dirname(os.path.realpath(__file__))
+    path_to_nltk = os.path.join(path_to_script, "nltk_data")
+    nltk.data.path = [ path_to_nltk ] + nltk.data.path
+
+    input_file_name = os.path.basename(path_to_book)
+    book_name = os.path.splitext(input_file_name)[0]
+    result_dir_path = get_output_dir_path(output_path, book_name)
+    result_book_path = os.path.join(result_dir_path, input_file_name)
+    shutil.copyfile(path_to_book, result_book_path)
+
     try:
-        book_content = get_rawml_content(path_to_book)
-    except WiseException as e:
-        print("  [-] Can't get rawml content:")
-        print("    |", e)
+        book_asin = get_or_create_book_asin(result_book_path)
+    except:
         return
 
+    try:
+        words = get_words(result_book_path)
+    except:
+        return
 
-    sdr_dir_name = "{}.sdr".format(book_name_without_ex)
+    if len(words) == 0:
+        print("[.] There are no suitable words in the book")
+        return
+        
+    print("[.] Count of words: {}".format(len(words)))
+
+    sdr_dir_name = "{}.sdr".format(book_name)
     sdr_dir_path = os.path.join(result_dir_path, sdr_dir_name)
     if not os.path.exists(sdr_dir_path):
         os.makedirs(sdr_dir_path)
 
     LangLayerDb = LanguageLayerDB(sdr_dir_path, book_asin)
-
-    print("[.] Collecting words")
-    parser = RawmlRarser(book_content)
-    words = parser.parse()
-    count = len(words)
-    if count == 0:
-        print("[.] There are no suitable words in the book")
-        return
-    else:
-        print("[.] Count of words: {}".format(count))
 
     lookup = {}
     senses_path = get_resource_path("senses.csv")
@@ -366,7 +377,7 @@ def main():
 
     lemmatizer = nltk.WordNetLemmatizer()
     prfx = "[.] Processing words: "
-    print_progress(0, count, prefix=prfx, suffix='')
+    print_progress(0, len(words), prefix=prfx, suffix='')
     LangLayerDb.start_transaction()
     if DEBUG == True:
         f = open('log.txt', 'a')
@@ -382,7 +393,7 @@ def main():
             if DEBUG == True:
                 f.write("{} - {} - {}\n".format(word_offset, word, sense_id))
             LangLayerDb.add_gloss(word_offset, sense_id)
-        print_progress(i+1, count, prefix=prfx, suffix='')
+        print_progress(i+1, len(words), prefix=prfx, suffix='')
 
     if DEBUG == True:
         f.close()
@@ -391,6 +402,23 @@ def main():
 
     print("[.] Success!")
     print("Now copy this folder: \"{}\" to your Kindle".format(result_dir_path))
+
+def main():
+    if len(sys.argv) < 2:
+        return usage()
+
+    path_to_book = os.path.abspath(sys.argv[1])
+    output_path = "."
+
+    print("[.] Checking dependenices")
+    try:
+        check_dependencies()
+    except ValueError as e:
+        print("  [-] Checking failed:")
+        print("    |", e)
+        return
+
+    process(path_to_book, output_path)
 
 if __name__ == "__main__":
     main()
