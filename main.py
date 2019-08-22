@@ -11,9 +11,9 @@ import nltk
 import platform
 import cursor
 import time
+import logging
+from dataclasses import dataclass
 from html.parser import HTMLParser
-
-DEBUG = False
 
 class WiseException(Exception):
     def __init__(self, message, desc):
@@ -59,18 +59,6 @@ def print_progress(iteration, total, prefix='', suffix='', decimals=1, bar_lengt
     if iteration == total:
         print("")
         cursor.show()
-
-def get_wordnet_pos(treebank_tag):
-    if treebank_tag.startswith('J'):
-        return nltk.corpus.wordnet.ADJ
-    elif treebank_tag.startswith('V'):
-        return nltk.corpus.wordnet.VERB
-    elif treebank_tag.startswith('N'):
-        return nltk.corpus.wordnet.NOUN
-    elif treebank_tag.startswith('R'):
-        return nltk.corpus.wordnet.ADV
-    else:
-        return nltk.corpus.wordnet.NOUN
 
 
 def usage():
@@ -167,6 +155,10 @@ class LanguageLayerDB():
         except sqlite3.Error as e:
             pass
 
+@dataclass
+class Gloss:
+    offset: int
+    word: str
 
 class RawmlRarser(HTMLParser):
     def __init__(self, book_content, *args, **kwargs):
@@ -196,7 +188,7 @@ class RawmlRarser(HTMLParser):
                 word_byte_offset = self.last_token_bt_offset + len(self.bt[self.last_token_offset:word_offset].encode('utf-8'))
                 self.last_token_offset = word_offset
                 self.last_token_bt_offset = word_byte_offset
-                self.result.append((word_byte_offset, word))
+                self.result.append(Gloss(offset=word_byte_offset, word=word))
 
 def get_path_to_mobitool():
     path_to_third_party = get_resource_path("third_party")
@@ -273,8 +265,7 @@ def check_dependencies():
     if os.path.exists(path_to_mobitool) == False:
         raise ValueError(path_to_mobitool + " not found")
 
-
-def get_words(path_to_book):
+def get_glosses(path_to_book):
     print("[.] Getting rawml content of the book")
     try:
         book_content = get_rawml_content(path_to_book)
@@ -326,14 +317,53 @@ def get_output_dir_path(output_path, book_name):
 
     return result_dir_path
 
+def get_explanatory_dictionary():
+    result = {}
+    senses_path = get_resource_path("senses.csv")
+    with open(senses_path, 'rb') as f:
+        f = f.read().decode('utf-8')
+        for line in f.splitlines():
+            l = line.strip()
+            if l[0] == '"':
+                continue
+            word, sense_id, difficulty = l.split(',')
+            result[word] = [sense_id, difficulty]
+    return result
+
+def get_logger_for_words():
+    wlog = logging.getLogger('word-processing')
+    wlog.setLevel(logging.INFO)
+    fh = logging.FileHandler('log-result-word-meanings.txt')
+    wlog.addHandler(fh)
+    return wlog
+
+class WordProcessor:
+    def __init__(self, path_to_nltk_data):
+        nltk.data.path = [ path_to_nltk_data ] + nltk.data.path    
+        self.lemmatizer = nltk.WordNetLemmatizer()
+    
+    def normalize_word(self, word):
+        word = word.lower()
+        pos_tag = nltk.pos_tag([word])[0][1]
+        pos_tag_wordnet = self.get_wordnet_pos(pos_tag)
+        return self.lemmatizer.lemmatize(word, pos=pos_tag_wordnet)
+
+    def get_wordnet_pos(self, treebank_tag):
+        if treebank_tag.startswith('J'):
+            return nltk.corpus.wordnet.ADJ
+        elif treebank_tag.startswith('V'):
+            return nltk.corpus.wordnet.VERB
+        elif treebank_tag.startswith('N'):
+            return nltk.corpus.wordnet.NOUN
+        elif treebank_tag.startswith('R'):
+            return nltk.corpus.wordnet.ADV
+        else:
+            return nltk.corpus.wordnet.NOUN
+
 def process(path_to_book, output_path):
     if os.path.exists(path_to_book) == False:
         print("[-] Wrong path to book: {}".format(path_to_book))
         sys.exit()
-
-    path_to_script = os.path.dirname(os.path.realpath(__file__))
-    path_to_nltk = os.path.join(path_to_script, "nltk_data")
-    nltk.data.path = [ path_to_nltk ] + nltk.data.path
 
     input_file_name = os.path.basename(path_to_book)
     book_name = os.path.splitext(input_file_name)[0]
@@ -347,15 +377,15 @@ def process(path_to_book, output_path):
         return
 
     try:
-        words = get_words(result_book_path)
+        glosses = get_glosses(result_book_path)
     except:
         return
 
-    if len(words) == 0:
+    if len(glosses) == 0:
         print("[.] There are no suitable words in the book")
         return
         
-    print("[.] Count of words: {}".format(len(words)))
+    print("[.] Count of words: {}".format(len(glosses)))
 
     sdr_dir_name = "{}.sdr".format(book_name)
     sdr_dir_path = os.path.join(result_dir_path, sdr_dir_name)
@@ -363,40 +393,29 @@ def process(path_to_book, output_path):
         os.makedirs(sdr_dir_path)
 
     LangLayerDb = LanguageLayerDB(sdr_dir_path, book_asin)
+    
+    path_to_script = os.path.dirname(os.path.realpath(__file__))
+    path_to_nltk_data = os.path.join(path_to_script, "nltk_data")
+    word_processor = WordProcessor(path_to_nltk_data)
 
-    lookup = {}
-    senses_path = get_resource_path("senses.csv")
-    with open(senses_path, 'rb') as f:
-        f = f.read().decode('utf-8')
-        for line in f.splitlines():
-            l = line.strip()
-            if l[0] == '"':
-                continue
-            word, sense_id, difficulty = l.split(',')
-            lookup[word] = [sense_id, difficulty]
+    exp_dict = get_explanatory_dictionary()
 
-    lemmatizer = nltk.WordNetLemmatizer()
     prfx = "[.] Processing words: "
-    print_progress(0, len(words), prefix=prfx, suffix='')
+    print_progress(0, len(glosses), prefix=prfx, suffix='')
     LangLayerDb.start_transaction()
-    if DEBUG == True:
-        f = open('log.txt', 'a')
-    for i, gloss in enumerate(words):
-        word_offset = gloss[0]
-        word = gloss[1]
-        word = word.lower()
-        pos_tag = nltk.pos_tag([word])[0][1]
-        pos_tag_wordnet = get_wordnet_pos(pos_tag)
-        word = lemmatizer.lemmatize(word, pos=pos_tag_wordnet)
-        if word in lookup:
-            sense_id, difficulty = lookup[word]
-            if DEBUG == True:
-                f.write("{} - {} - {}\n".format(word_offset, word, sense_id))
-            LangLayerDb.add_gloss(word_offset, difficulty, sense_id)
-        print_progress(i+1, len(words), prefix=prfx, suffix='')
 
-    if DEBUG == True:
-        f.close()
+    wlog = get_logger_for_words()
+    for i, gloss in enumerate(glosses):
+        wlog.debug("Gloss: {}".format(gloss))
+
+        gloss.word = word_processor.normalize_word(gloss.word)
+        if gloss.word in exp_dict:
+            sense_id, difficulty  = exp_dict[gloss.word]
+            wlog.debug("{} - {} - {}".format(gloss.offset, gloss.word, sense_id))
+            LangLayerDb.add_gloss(gloss.offset, difficulty, sense_id)
+
+        print_progress(i+1, len(glosses), prefix=prfx, suffix='')
+
     LangLayerDb.end_transaction()
     LangLayerDb.close_db()
 
