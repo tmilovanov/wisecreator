@@ -158,11 +158,11 @@ class LanguageLayerDB():
     def end_transaction(self):
         self.conn.commit()
 
-    def add_gloss(self, start, sense_id):
+    def add_gloss(self, start, difficulty, sense_id):
         self.open_db()
         try:
             query = "INSERT INTO glosses VALUES (?,?,?,?,?)"
-            new_gloss = (start, None, 1, sense_id, 0)
+            new_gloss = (start, None, difficulty, sense_id, 0)
             self.cursor.execute(query, new_gloss)
         except sqlite3.Error as e:
             pass
@@ -372,8 +372,8 @@ def process(path_to_book, output_path):
             l = line.strip()
             if l[0] == '"':
                 continue
-            word, sense_id = l.split(',')
-            lookup[word] = sense_id
+            word, sense_id, difficulty = l.split(',')
+            lookup[word] = [sense_id, difficulty]
 
     lemmatizer = nltk.WordNetLemmatizer()
     prfx = "[.] Processing words: "
@@ -389,10 +389,10 @@ def process(path_to_book, output_path):
         pos_tag_wordnet = get_wordnet_pos(pos_tag)
         word = lemmatizer.lemmatize(word, pos=pos_tag_wordnet)
         if word in lookup:
-            sense_id = lookup[word]
+            sense_id, difficulty = lookup[word]
             if DEBUG == True:
                 f.write("{} - {} - {}\n".format(word_offset, word, sense_id))
-            LangLayerDb.add_gloss(word_offset, sense_id)
+            LangLayerDb.add_gloss(word_offset, difficulty, sense_id)
         print_progress(i+1, len(words), prefix=prfx, suffix='')
 
     if DEBUG == True:
