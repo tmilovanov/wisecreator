@@ -1,5 +1,8 @@
 @echo off
 
+rem pip install pyinstaller
+rem https://github.com/pyinstaller/pyinstaller/issues/3799
+
 echo [.] Building
 pyinstaller --onefile --noupx --log-level=WARN --clean ^
 	-n wisecreator ^
