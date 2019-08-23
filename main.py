@@ -146,11 +146,11 @@ class LanguageLayerDB():
     def end_transaction(self):
         self.conn.commit()
 
-    def add_gloss(self, start, sense_id):
+    def add_gloss(self, start, difficulty, sense_id):
         self.open_db()
         try:
             query = "INSERT INTO glosses VALUES (?,?,?,?,?)"
-            new_gloss = (start, None, 1, sense_id, 0)
+            new_gloss = (start, None, difficulty, sense_id, 0)
             self.cursor.execute(query, new_gloss)
         except sqlite3.Error as e:
             pass
@@ -326,8 +326,8 @@ def get_explanatory_dictionary():
             l = line.strip()
             if l[0] == '"':
                 continue
-            word, sense_id = l.split(',')
-            result[word] = sense_id
+            word, sense_id, difficulty = l.split(',')
+            result[word] = [sense_id, difficulty]
     return result
 
 def get_logger_for_words():
@@ -410,9 +410,9 @@ def process(path_to_book, output_path):
 
         gloss.word = word_processor.normalize_word(gloss.word)
         if gloss.word in exp_dict:
-            sense_id = exp_dict[gloss.word]
+            sense_id, difficulty  = exp_dict[gloss.word]
             wlog.debug("{} - {} - {}".format(gloss.offset, gloss.word, sense_id))
-            LangLayerDb.add_gloss(gloss.offset, sense_id)
+            LangLayerDb.add_gloss(gloss.offset, difficulty, sense_id)
 
         print_progress(i+1, len(glosses), prefix=prfx, suffix='')
 

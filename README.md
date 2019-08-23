@@ -22,7 +22,8 @@ You can create wordwise enabled .mobi files for Amazon Kindle by using
 1.  You need to have [calibre](https://calibre-ebook.com/) on your device.  
 2.	To run the script you need to have [Python3](https://www.python.org/downloads/)  
 3. 	Make sure you have these Python libs:  
-	[NLTK](http://www.nltk.org/)  
+	[NLTK](http://www.nltk.org/) - `pip install nltk` 
+	cursor - `pip install cursor`
 	sqlite3 - included in standard library, or if your python has been built from source, use `pip install pysqlite3`
 4. 	Run wisecreator:  
     `./main.py PATH_TO_YOUR_MOBI_BOOK`
