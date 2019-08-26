@@ -10,7 +10,7 @@ import re
 import nltk
 import platform
 import cursor
-import time
+import argparse
 import logging
 from dataclasses import dataclass
 from html.parser import HTMLParser
@@ -62,10 +62,6 @@ def print_progress(iteration, total, prefix='', suffix='', decimals=1, bar_lengt
     if iteration == total:
         print("")
         cursor.show()
-
-
-def usage():
-    print("./main.py input_book")
 
 
 class WordFilter:
@@ -444,11 +440,9 @@ def process(path_to_book, output_path):
 
 
 def main():
-    if len(sys.argv) < 2:
-        return usage()
-
-    path_to_book = os.path.abspath(sys.argv[1])
-    output_path = "."
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("fi", type=str, metavar="PATH_TO_YOUR_BOOK")
+    args = parser.parse_args()
 
     print("[.] Checking dependenices")
     try:
@@ -458,7 +452,7 @@ def main():
         print("    |", e)
         return
 
-    process(path_to_book, output_path)
+    process(args.fi, ".")
 
 
 if __name__ == "__main__":
