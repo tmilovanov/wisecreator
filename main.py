@@ -89,7 +89,7 @@ class WordFilter:
         return True
 
 
-class LanguageLayerDB():
+class LanguageLayerDB:
     def __init__(self, path_to_dir, book_asin):
         self.asin = book_asin
         self.conn = None
@@ -207,57 +207,6 @@ def get_path_to_mobitool():
     return path_to_mobitool
 
 
-def get_book_asin(path_to_book):
-    path_to_mobitool = get_path_to_mobitool()
-
-    command = [path_to_mobitool, path_to_book]
-    try:
-        proc = subprocess.Popen(command, stdout=subprocess.PIPE)
-        out, err = proc.communicate()
-    except Exception as e:
-        command_str = " ".join(command)
-        description = ["Failed to run command", command_str, e]
-        raise WiseException("", description)
-
-    try:
-        book_metadata = out.decode("utf-8")
-        match = re.search("ASIN: (\S+)", book_metadata)
-        if match:
-            book_asin = match.group(1)
-            return book_asin
-        else:
-            return None
-    except Exception as e:
-        message = ["Failed to decode mobitool output"]
-        raise WiseException("", message)
-
-
-def get_rawml_content(path_to_book):
-    path_to_mobitool = get_path_to_mobitool()
-
-    command = [path_to_mobitool, '-d', path_to_book]
-    try:
-        proc = subprocess.Popen(command, stdout=subprocess.PIPE)
-        out, err = proc.communicate()
-    except Exception as e:
-        command_str = " ".join(command)
-        description = ["Failed to run command", command_str, e]
-        raise WiseException("", description)
-
-    try:
-        book_name = os.path.basename(path_to_book)
-        book_name_without_ex = os.path.splitext(book_name)[0]
-        rawml_name = "{}.rawml".format(book_name_without_ex)
-        path_to_rawml = os.path.join(os.path.dirname(path_to_book), rawml_name)
-        with open(path_to_rawml, 'rt', encoding='utf-8') as f:
-            book_content = f.read()
-        os.remove(path_to_rawml)
-        return book_content
-    except UnicodeDecodeError as e:
-        message = ["Failed to open {} - {}".format(path_to_rawml, e)]
-        raise WiseException("", message)
-
-
 def check_dependencies():
     try:
         subprocess.check_output('ebook-convert --version', shell=True)
@@ -273,75 +222,33 @@ def check_dependencies():
         raise ValueError(path_to_mobitool + " not found")
 
 
-def get_glosses(path_to_book):
-    print("[.] Getting rawml content of the book")
-    try:
-        book_content = get_rawml_content(path_to_book)
-    except WiseException as e:
-        print("  [-] Can't get rawml content:")
-        print("    |", e)
-        raise ValueError()
-
-    print("[.] Collecting words")
-    parser = RawmlRarser(book_content)
-    words = parser.parse()
-    return words
-
-
-def get_or_create_book_asin(path_to_book):
-    print("[.] Converting mobi 2 mobi to generate ASIN")
-    # Convert mobi to mobi by calibre and get ASIN that calibre assign to converted book
-    try:
-        converted_book_path = os.path.join(os.path.dirname(path_to_book),
-                                           "tmp_book_{}".format(os.path.basename(path_to_book)))
-
-        cmd_str = "{} \"{}\" \"{}\"".format('ebook-convert', path_to_book, converted_book_path)
-        out = subprocess.check_output(cmd_str, shell=True)
-
-        shutil.move(converted_book_path, path_to_book)
-    except Exception as e:
-        print("  [-] Failed to convert mobi 2 mobi:")
-        print("    |", e)
-        raise ValueError()
-
-    print("[.] Getting ASIN")
-    try:
-        book_asin = get_book_asin(path_to_book)
-    except WiseException as e:
-        print("  [-] Can't get ASIN:")
-        for item in e.desc:
-            print("    |", item)
-        raise ValueError()
-
-    return book_asin
-
-
-def get_explanatory_dictionary():
-    result = {}
-    senses_path = get_resource_path("senses.csv")
-    with open(senses_path, 'rb') as f:
-        f = f.read().decode('utf-8')
-        for line in f.splitlines():
-            l = line.strip()
-            if l[0] == '"':
-                continue
-            word, sense_id, difficulty = l.split(',')
-            result[word] = [sense_id, difficulty]
-    return result
-
-
 def get_logger_for_words():
     wlog = logging.getLogger('word-processing')
     wlog.setLevel(logging.INFO)
-    fh = logging.FileHandler('log-result-word-meanings.txt')
+    fh = logging.FileHandler('result_senses.log')
     wlog.addHandler(fh)
     return wlog
 
+@dataclass
+class Sense:
+    id : int
+    difficulty : int
 
 class WordProcessor:
     def __init__(self, path_to_nltk_data):
         nltk.data.path = [path_to_nltk_data] + nltk.data.path
         self.lemmatizer = nltk.WordNetLemmatizer()
+
+        senses_path = get_resource_path("senses.csv")
+        self.senses = {}
+        with open(senses_path, 'rb') as f:
+            f = f.read().decode('utf-8')
+            for line in f.splitlines():
+                l = line.strip()
+                if l[0] == '"':
+                    continue
+                word, sense_id, difficulty = l.split(',')
+                self.senses[word] = Sense(sense_id, difficulty)
 
     def normalize_word(self, word):
         word = word.lower()
@@ -361,6 +268,107 @@ class WordProcessor:
         else:
             return nltk.corpus.wordnet.NOUN
 
+    def get_sense(self, word):
+        word = self.normalize_word(word)
+        if word in self.senses:
+            return self.senses[word]
+        else:
+            return None
+
+
+class Book:
+    def __init__(self, path):
+        self.path = path
+        self.f_name, self.f_ext = os.path.splitext(os.path.basename(path))
+
+    def get_rawml_content(self):
+        path_to_mobitool = get_path_to_mobitool()
+
+        command = [path_to_mobitool, '-d', self.path]
+        try:
+            proc = subprocess.Popen(command, stdout=subprocess.PIPE)
+            out, err = proc.communicate()
+        except Exception as e:
+            command_str = " ".join(command)
+            description = ["Failed to run command", command_str, e]
+            raise WiseException("", description)
+
+        try:
+            rawml_name = "{}.rawml".format(self.f_name)
+            path_to_rawml = os.path.join(os.path.dirname(self.path), rawml_name)
+            with open(path_to_rawml, 'rt', encoding='utf-8') as f:
+                book_content = f.read()
+            os.remove(path_to_rawml)
+            return book_content
+        except UnicodeDecodeError as e:
+            message = ["Failed to open {} - {}".format(path_to_rawml, e)]
+            raise WiseException("", message)
+
+    def get_glosses(self):
+        print("[.] Getting rawml content of the book")
+        try:
+            book_content = self.get_rawml_content()
+        except WiseException as e:
+            print("  [-] Can't get rawml content:")
+            print("    |", e)
+            raise ValueError()
+
+        print("[.] Collecting words")
+        parser = RawmlRarser(book_content)
+        words = parser.parse()
+        return words
+
+    def _get_book_asin(self):
+        path_to_mobitool = get_path_to_mobitool()
+
+        command = [path_to_mobitool, self.path]
+        try:
+            proc = subprocess.Popen(command, stdout=subprocess.PIPE)
+            out, err = proc.communicate()
+        except Exception as e:
+            command_str = " ".join(command)
+            description = ["Failed to run command", command_str, e]
+            raise WiseException("", description)
+
+        try:
+            book_metadata = out.decode("utf-8")
+            match = re.search("ASIN: (\S+)", book_metadata)
+            if match:
+                book_asin = match.group(1)
+                return book_asin
+            else:
+                return None
+        except Exception as e:
+            message = ["Failed to decode mobitool output"]
+            raise WiseException("", message)
+
+    def get_or_create_asin(self):
+        print("[.] Converting mobi 2 mobi to generate ASIN")
+        # Convert mobi to mobi by calibre and get ASIN that calibre assign to converted book
+        try:
+            converted_book_path = os.path.join(os.path.dirname(self.path),
+                                               "tmp_book_{}{}".format(self.f_name, self.f_ext))
+
+            cmd_str = "{} \"{}\" \"{}\"".format('ebook-convert', self.path, converted_book_path)
+            out = subprocess.check_output(cmd_str, shell=True)
+
+            shutil.move(converted_book_path, self.path)
+        except Exception as e:
+            print("  [-] Failed to convert mobi 2 mobi:")
+            print("    |", e)
+            raise ValueError()
+
+        print("[.] Getting ASIN")
+        try:
+            book_asin = self._get_book_asin()
+        except WiseException as e:
+            print("  [-] Can't get ASIN:")
+            for item in e.desc:
+                print("    |", item)
+            raise ValueError()
+
+        return book_asin
+
 
 class WWResult:
     def __init__(self, input_path, output_path):
@@ -373,6 +381,10 @@ class WWResult:
         self.book_name = os.path.splitext(self._input_file_name)[0]
         self.result_dir_path = self._get_result_dir_path()
         self.book_path = os.path.join(self.result_dir_path, self._input_file_name)
+
+        sdr_dir_name = "{}.sdr".format(self.book_name)
+        self.sdr_dir_path = os.path.join(self.result_dir_path, sdr_dir_name)
+        os.makedirs(self.sdr_dir_path)
 
         shutil.copyfile(input_path, self.book_path)
 
@@ -392,8 +404,9 @@ class WWResult:
 def process(path_to_book, output_path):
     try:
         target = WWResult(path_to_book, output_path)
-        book_asin = get_or_create_book_asin(target.book_path)
-        glosses = get_glosses(target.book_path)
+        book = Book(target.book_path)
+        book_asin = book.get_or_create_asin()
+        glosses = book.get_glosses()
     except:
         return
 
@@ -403,18 +416,11 @@ def process(path_to_book, output_path):
 
     print("[.] Count of words: {}".format(len(glosses)))
 
-    sdr_dir_name = "{}.sdr".format(target.book_name)
-    sdr_dir_path = os.path.join(target.result_dir_path, sdr_dir_name)
-    if not os.path.exists(sdr_dir_path):
-        os.makedirs(sdr_dir_path)
-
-    lang_layer_db = LanguageLayerDB(sdr_dir_path, book_asin)
+    lang_layer_db = LanguageLayerDB(target.sdr_dir_path, book_asin)
 
     path_to_script = os.path.dirname(os.path.realpath(__file__))
     path_to_nltk_data = os.path.join(path_to_script, "nltk_data")
     word_processor = WordProcessor(path_to_nltk_data)
-
-    exp_dict = get_explanatory_dictionary()
 
     prfx = "[.] Processing words: "
     print_progress(0, len(glosses), prefix=prfx, suffix='')
@@ -424,11 +430,10 @@ def process(path_to_book, output_path):
     for i, gloss in enumerate(glosses):
         wlog.debug("Gloss: {}".format(gloss))
 
-        gloss.word = word_processor.normalize_word(gloss.word)
-        if gloss.word in exp_dict:
-            sense_id, difficulty = exp_dict[gloss.word]
-            wlog.debug("{} - {} - {}".format(gloss.offset, gloss.word, sense_id))
-            lang_layer_db.add_gloss(gloss.offset, difficulty, sense_id)
+        sense = word_processor.get_sense(gloss.word)
+        if sense:
+            wlog.debug("{} - {} - {}".format(gloss.offset, gloss.word, sense.id))
+            lang_layer_db.add_gloss(gloss.offset, sense.difficulty, sense.id)
 
         print_progress(i + 1, len(glosses), prefix=prfx, suffix='')
 
