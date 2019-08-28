@@ -65,9 +65,8 @@ def print_progress(iteration, total, prefix='', suffix='', decimals=1, bar_lengt
 
 
 class WordFilter:
-    def __init__(self):
-        filter_path = get_resource_path("filter.txt")
-        with open(filter_path, 'rt') as f:
+    def __init__(self, path_to_filter):
+        with open(path_to_filter, 'rt') as f:
             self.do_not_take = []
             for line in f:
                 if line.strip()[0] == '#':
@@ -163,11 +162,11 @@ class Gloss:
 
 
 class RawmlRarser(HTMLParser):
-    def __init__(self, book_content, *args, **kwargs):
+    def __init__(self, book_content, word_filter, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.bt = book_content
         self.result = []
-        self.wf = WordFilter()
+        self.wf = word_filter
         self.last_token_offset = 0
         self.last_token_bt_offset = 0
 
@@ -234,14 +233,11 @@ class Sense:
     id : int
     difficulty : int
 
-class WordProcessor:
-    def __init__(self, path_to_nltk_data):
-        nltk.data.path = [path_to_nltk_data] + nltk.data.path
-        self.lemmatizer = nltk.WordNetLemmatizer()
 
-        senses_path = get_resource_path("senses.csv")
+class SenseProvider:
+    def __init__(self, path_to_senses):
         self.senses = {}
-        with open(senses_path, 'rb') as f:
+        with open(path_to_senses, 'rb') as f:
             f = f.read().decode('utf-8')
             for line in f.splitlines():
                 l = line.strip()
@@ -250,35 +246,45 @@ class WordProcessor:
                 word, sense_id, difficulty = l.split(',')
                 self.senses[word] = Sense(sense_id, difficulty)
 
-    def normalize_word(self, word):
-        word = word.lower()
-        pos_tag = nltk.pos_tag([word])[0][1]
-        pos_tag_wordnet = self.get_wordnet_pos(pos_tag)
-        return self.lemmatizer.lemmatize(word, pos=pos_tag_wordnet)
-
-    def get_wordnet_pos(self, treebank_tag):
-        if treebank_tag.startswith('J'):
-            return nltk.corpus.wordnet.ADJ
-        elif treebank_tag.startswith('V'):
-            return nltk.corpus.wordnet.VERB
-        elif treebank_tag.startswith('N'):
-            return nltk.corpus.wordnet.NOUN
-        elif treebank_tag.startswith('R'):
-            return nltk.corpus.wordnet.ADV
-        else:
-            return nltk.corpus.wordnet.NOUN
-
     def get_sense(self, word):
-        word = self.normalize_word(word)
         if word in self.senses:
             return self.senses[word]
         else:
             return None
 
 
+class WordProcessor:
+    def __init__(self, path_to_nltk_data, sense_provider):
+        nltk.data.path = [path_to_nltk_data] + nltk.data.path
+        self.lemmatizer = nltk.WordNetLemmatizer()
+        self.sense_provider = sense_provider
+
+    def normalize_word(self, word):
+        def get_wordnet_pos(treebank_tag):
+            if treebank_tag.startswith('J'):
+                return nltk.corpus.wordnet.ADJ
+            elif treebank_tag.startswith('V'):
+                return nltk.corpus.wordnet.VERB
+            elif treebank_tag.startswith('N'):
+                return nltk.corpus.wordnet.NOUN
+            elif treebank_tag.startswith('R'):
+                return nltk.corpus.wordnet.ADV
+            else:
+                return nltk.corpus.wordnet.NOUN
+
+        word = word.lower()
+        pos_tag = nltk.pos_tag([word])[0][1]
+        pos_tag_wordnet = get_wordnet_pos(pos_tag)
+        return self.lemmatizer.lemmatize(word, pos=pos_tag_wordnet)
+
+    def get_sense(self, word):
+        return self.sense_provider.get_sense(self.normalize_word(word))
+
+
 class Book:
-    def __init__(self, path):
+    def __init__(self, path, word_filter):
         self.path = path
+        self.word_filter = word_filter
         self.f_name, self.f_ext = os.path.splitext(os.path.basename(path))
 
     def get_rawml_content(self):
@@ -314,7 +320,7 @@ class Book:
             raise ValueError()
 
         print("[.] Collecting words")
-        parser = RawmlRarser(book_content)
+        parser = RawmlRarser(book_content, self.word_filter)
         words = parser.parse()
         return words
 
@@ -401,47 +407,56 @@ class WWResult:
         return result
 
 
+class WordWiser:
+    def __init__(self, word_processor):
+        self.word_processor = word_processor
+
+    def wordwise(self, path_to_book, output_path):
+        try:
+            target = WWResult(path_to_book, output_path)
+            book = Book(target.book_path, WordFilter(get_resource_path("filter.txt")))
+            book_asin = book.get_or_create_asin()
+            glosses = book.get_glosses()
+        except:
+            return
+
+        if len(glosses) == 0:
+            print("[.] There are no suitable words in the book")
+            return
+
+        print("[.] Count of words: {}".format(len(glosses)))
+
+        lang_layer_db = LanguageLayerDB(target.sdr_dir_path, book_asin)
+
+        prfx = "[.] Processing words: "
+        print_progress(0, len(glosses), prefix=prfx, suffix='')
+        lang_layer_db.start_transaction()
+
+        wlog = get_logger_for_words()
+        for i, gloss in enumerate(glosses):
+            wlog.debug("Gloss: {}".format(gloss))
+
+            sense = self.word_processor.get_sense(gloss.word)
+            if sense:
+                wlog.debug("{} - {} - {}".format(gloss.offset, gloss.word, sense.id))
+                lang_layer_db.add_gloss(gloss.offset, sense.difficulty, sense.id)
+
+            print_progress(i + 1, len(glosses), prefix=prfx, suffix='')
+
+        lang_layer_db.end_transaction()
+        lang_layer_db.close_db()
+
+        print("[.] Success!")
+        print("Now copy this folder: \"{}\" to your Kindle".format(target.result_dir_path))
+
+
 def process(path_to_book, output_path):
-    try:
-        target = WWResult(path_to_book, output_path)
-        book = Book(target.book_path)
-        book_asin = book.get_or_create_asin()
-        glosses = book.get_glosses()
-    except:
-        return
-
-    if len(glosses) == 0:
-        print("[.] There are no suitable words in the book")
-        return
-
-    print("[.] Count of words: {}".format(len(glosses)))
-
-    lang_layer_db = LanguageLayerDB(target.sdr_dir_path, book_asin)
-
     path_to_script = os.path.dirname(os.path.realpath(__file__))
     path_to_nltk_data = os.path.join(path_to_script, "nltk_data")
-    word_processor = WordProcessor(path_to_nltk_data)
+    word_processor = WordProcessor(path_to_nltk_data, SenseProvider(get_resource_path("senses.csv")))
 
-    prfx = "[.] Processing words: "
-    print_progress(0, len(glosses), prefix=prfx, suffix='')
-    lang_layer_db.start_transaction()
-
-    wlog = get_logger_for_words()
-    for i, gloss in enumerate(glosses):
-        wlog.debug("Gloss: {}".format(gloss))
-
-        sense = word_processor.get_sense(gloss.word)
-        if sense:
-            wlog.debug("{} - {} - {}".format(gloss.offset, gloss.word, sense.id))
-            lang_layer_db.add_gloss(gloss.offset, sense.difficulty, sense.id)
-
-        print_progress(i + 1, len(glosses), prefix=prfx, suffix='')
-
-    lang_layer_db.end_transaction()
-    lang_layer_db.close_db()
-
-    print("[.] Success!")
-    print("Now copy this folder: \"{}\" to your Kindle".format(target.result_dir_path))
+    ww = WordWiser(word_processor)
+    ww.wordwise(path_to_book, output_path)
 
 
 def main():
