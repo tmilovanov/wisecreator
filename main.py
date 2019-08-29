@@ -87,8 +87,7 @@ class WordFilter:
 
         return True
 
-
-class LanguageLayerDB:
+class LangLayerInserter:
     def __init__(self, path_to_dir, book_asin):
         self.asin = book_asin
         self.conn = None
@@ -153,6 +152,18 @@ class LanguageLayerDB:
             self.cursor.execute(query, new_gloss)
         except sqlite3.Error as e:
             pass
+
+class LanguageLayerDb:
+    def __init__(self, path_to_dir, book_asin):
+        self.inserter = LangLayerInserter(path_to_dir, book_asin)
+
+    def __enter__(self):
+        self.inserter.start_transaction()
+        return self.inserter
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.inserter.end_transaction()
+        self.inserter.close_db()
 
 
 @dataclass
@@ -426,25 +437,17 @@ class WordWiser:
 
         print("[.] Count of words: {}".format(len(glosses)))
 
-        lang_layer_db = LanguageLayerDB(target.sdr_dir_path, book_asin)
-
         prfx = "[.] Processing words: "
         print_progress(0, len(glosses), prefix=prfx, suffix='')
-        lang_layer_db.start_transaction()
-
         wlog = get_logger_for_words()
-        for i, gloss in enumerate(glosses):
-            wlog.debug("Gloss: {}".format(gloss))
-
-            sense = self.word_processor.get_sense(gloss.word)
-            if sense:
-                wlog.debug("{} - {} - {}".format(gloss.offset, gloss.word, sense.id))
-                lang_layer_db.add_gloss(gloss.offset, sense.difficulty, sense.id)
-
-            print_progress(i + 1, len(glosses), prefix=prfx, suffix='')
-
-        lang_layer_db.end_transaction()
-        lang_layer_db.close_db()
+        with LanguageLayerDb(target.sdr_dir_path, book_asin) as lldb:
+            for i, gloss in enumerate(glosses):
+                wlog.debug("Gloss: {}".format(gloss))
+                sense = self.word_processor.get_sense(gloss.word)
+                if sense:
+                    wlog.debug("{} - {} - {}".format(gloss.offset, gloss.word, sense.id))
+                    lldb.add_gloss(gloss.offset, sense.difficulty, sense.id)
+                print_progress(i + 1, len(glosses), prefix=prfx, suffix='')
 
         print("[.] Success!")
         print("Now copy this folder: \"{}\" to your Kindle".format(target.result_dir_path))
