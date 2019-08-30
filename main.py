@@ -7,6 +7,8 @@ import sys
 import os
 import shutil
 import re
+import time
+
 import nltk
 import platform
 import cursor
@@ -32,34 +34,38 @@ def get_resource_path(relative_path):
     return os.path.join(base_path, relative_path)
 
 
-# Got it from https://gist.github.com/aubricus/f91fb55dc6ba5557fbab06119420dd6a
-# Print iterations progress
-def print_progress(iteration, total, prefix='', suffix='', decimals=1, bar_length=100):
-    """
-    Call in a loop to create terminal progress bar
-    @params:
-        iteration   - Required  : current iteration (Int)
-        total       - Required  : total iterations (Int)
-        prefix      - Optional  : prefix string (Str)
-        suffix      - Optional  : suffix string (Str)
-        decimals    - Optional  : positive number of decimals in percent complete (Int)
-        bar_length  - Optional  : character length of bar (Int)
-    """
-    if iteration == 0:
+class ProgressBarImpl:
+    def __init__(self, total, prefix='', suffix='', decimals=1):
+        self.total = total
+        self.prefix = prefix
+        self.suffix = suffix
+        self.decimals = decimals
+        self.bar_length = shutil.get_terminal_size()[0] // 2
+        self.str_format = "{0:." + str(decimals) + "f}"
+        self.iteration = 0
+
+    def print_progress(self):
+        percents = self.str_format.format(100 * (self.iteration / float(self.total)))
+        filled_length = int(round(self.bar_length * self.iteration / float(self.total)))
+        bar = '+' * filled_length + '-' * (self.bar_length - filled_length)
+        progress_bar = "\r%s |%s| %s%s %s" % (self.prefix, bar, percents, '%', self.suffix)
+        print(progress_bar, end='', flush=True)
+
+    def increment(self):
+        self.iteration += 1
+        self.print_progress()
+
+
+class ProgressBar:
+    def __init__(self, total, prefix='', suffix='', decimal=1):
+        self.pb = ProgressBarImpl(total, prefix, suffix, decimal)
+
+    def __enter__(self):
         cursor.hide()
+        self.pb.print_progress()
+        return self.pb
 
-    bar_length = shutil.get_terminal_size()[0] // 2
-
-    str_format = "{0:." + str(decimals) + "f}"
-    percents = str_format.format(100 * (iteration / float(total)))
-    filled_length = int(round(bar_length * iteration / float(total)))
-    bar = '+' * filled_length + '-' * (bar_length - filled_length)
-
-    progress_bar = "\r%s |%s| %s%s %s" % (prefix, bar, percents, '%', suffix)
-
-    print(progress_bar, end='', flush=True)
-
-    if iteration == total:
+    def __exit__(self, exc_type, exc_val, exc_tb):
         print("")
         cursor.show()
 
@@ -422,6 +428,14 @@ class WordWiser:
     def __init__(self, word_processor):
         self.word_processor = word_processor
 
+    def process_glosses(self, lldb, wlog, glosses):
+        for gloss in glosses:
+            sense = self.word_processor.get_sense(gloss.word)
+            if sense:
+                wlog.debug("{} - {} - {}".format(gloss.offset, gloss.word, sense.id))
+                lldb.add_gloss(gloss.offset, sense.difficulty, sense.id)
+            yield gloss
+
     def wordwise(self, path_to_book, output_path):
         try:
             target = WWResult(path_to_book, output_path)
@@ -437,17 +451,11 @@ class WordWiser:
 
         print("[.] Count of words: {}".format(len(glosses)))
 
-        prfx = "[.] Processing words: "
-        print_progress(0, len(glosses), prefix=prfx, suffix='')
         wlog = get_logger_for_words()
         with LanguageLayerDb(target.sdr_dir_path, book_asin) as lldb:
-            for i, gloss in enumerate(glosses):
-                wlog.debug("Gloss: {}".format(gloss))
-                sense = self.word_processor.get_sense(gloss.word)
-                if sense:
-                    wlog.debug("{} - {} - {}".format(gloss.offset, gloss.word, sense.id))
-                    lldb.add_gloss(gloss.offset, sense.difficulty, sense.id)
-                print_progress(i + 1, len(glosses), prefix=prfx, suffix='')
+            with ProgressBar(len(glosses), "[.] Processing words: ") as pb:
+                for gloss in self.process_glosses(lldb, wlog, glosses):
+                    pb.increment()
 
         print("[.] Success!")
         print("Now copy this folder: \"{}\" to your Kindle".format(target.result_dir_path))
