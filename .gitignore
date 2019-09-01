@@ -1,3 +1,7 @@
+test books/amazon/*
+
+*.idea
+
 ######## PYINSTALLER ########
 *.spec
 build/

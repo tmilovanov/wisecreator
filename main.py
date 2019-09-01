@@ -6,23 +6,15 @@ import subprocess
 import sys
 import os
 import shutil
-import re
 import time
-
 import nltk
 import platform
 import cursor
 import argparse
 import logging
 from dataclasses import dataclass
-from html.parser import HTMLParser
 
-
-class WiseException(Exception):
-    def __init__(self, message, desc):
-        super().__init__(message)
-
-        self.desc = desc
+import ww_book
 
 
 def get_resource_path(relative_path):
@@ -172,43 +164,6 @@ class LanguageLayerDb:
         self.inserter.close_db()
 
 
-@dataclass
-class Gloss:
-    offset: int
-    word: str
-
-
-class RawmlRarser(HTMLParser):
-    def __init__(self, book_content, word_filter, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.bt = book_content
-        self.result = []
-        self.wf = word_filter
-        self.last_token_offset = 0
-        self.last_token_bt_offset = 0
-
-    def parse(self):
-        self.feed(self.bt)
-        return self.result
-
-    def handle_starttag(self, tag, attrs):
-        pass
-
-    def handle_endtag(self, tag):
-        pass
-
-    def handle_data(self, data):
-        paragraph_text = data
-        for match in re.finditer(r'[A-Za-z\']+', paragraph_text):
-            word = paragraph_text[match.start():match.end()]
-            if self.wf.is_take_word(word):
-                word_offset = self.getpos()[1] + match.start()
-                word_byte_offset = self.last_token_bt_offset + len(
-                    self.bt[self.last_token_offset:word_offset].encode('utf-8'))
-                self.last_token_offset = word_offset
-                self.last_token_bt_offset = word_byte_offset
-                self.result.append(Gloss(offset=word_byte_offset, word=word))
-
 
 def get_path_to_mobitool():
     path_to_third_party = get_resource_path("third_party")
@@ -237,13 +192,6 @@ def check_dependencies():
     if not os.path.exists(path_to_mobitool):
         raise ValueError(path_to_mobitool + " not found")
 
-
-def get_logger_for_words():
-    wlog = logging.getLogger('word-processing')
-    wlog.setLevel(logging.INFO)
-    fh = logging.FileHandler('result_senses.log')
-    wlog.addHandler(fh)
-    return wlog
 
 @dataclass
 class Sense:
@@ -297,102 +245,6 @@ class WordProcessor:
     def get_sense(self, word):
         return self.sense_provider.get_sense(self.normalize_word(word))
 
-
-class Book:
-    def __init__(self, path, word_filter):
-        self.path = path
-        self.word_filter = word_filter
-        self.f_name, self.f_ext = os.path.splitext(os.path.basename(path))
-
-    def get_rawml_content(self):
-        path_to_mobitool = get_path_to_mobitool()
-
-        command = [path_to_mobitool, '-d', self.path]
-        try:
-            proc = subprocess.Popen(command, stdout=subprocess.PIPE)
-            out, err = proc.communicate()
-        except Exception as e:
-            command_str = " ".join(command)
-            description = ["Failed to run command", command_str, e]
-            raise WiseException("", description)
-
-        try:
-            rawml_name = "{}.rawml".format(self.f_name)
-            path_to_rawml = os.path.join(os.path.dirname(self.path), rawml_name)
-            with open(path_to_rawml, 'rt', encoding='utf-8') as f:
-                book_content = f.read()
-            os.remove(path_to_rawml)
-            return book_content
-        except UnicodeDecodeError as e:
-            message = ["Failed to open {} - {}".format(path_to_rawml, e)]
-            raise WiseException("", message)
-
-    def get_glosses(self):
-        print("[.] Getting rawml content of the book")
-        try:
-            book_content = self.get_rawml_content()
-        except WiseException as e:
-            print("  [-] Can't get rawml content:")
-            print("    |", e)
-            raise ValueError()
-
-        print("[.] Collecting words")
-        parser = RawmlRarser(book_content, self.word_filter)
-        words = parser.parse()
-        return words
-
-    def _get_book_asin(self):
-        path_to_mobitool = get_path_to_mobitool()
-
-        command = [path_to_mobitool, self.path]
-        try:
-            proc = subprocess.Popen(command, stdout=subprocess.PIPE)
-            out, err = proc.communicate()
-        except Exception as e:
-            command_str = " ".join(command)
-            description = ["Failed to run command", command_str, e]
-            raise WiseException("", description)
-
-        try:
-            book_metadata = out.decode("utf-8")
-            match = re.search("ASIN: (\S+)", book_metadata)
-            if match:
-                book_asin = match.group(1)
-                return book_asin
-            else:
-                return None
-        except Exception as e:
-            message = ["Failed to decode mobitool output"]
-            raise WiseException("", message)
-
-    def get_or_create_asin(self):
-        print("[.] Converting mobi 2 mobi to generate ASIN")
-        # Convert mobi to mobi by calibre and get ASIN that calibre assign to converted book
-        try:
-            converted_book_path = os.path.join(os.path.dirname(self.path),
-                                               "tmp_book_{}{}".format(self.f_name, self.f_ext))
-
-            cmd_str = "{} \"{}\" \"{}\"".format('ebook-convert', self.path, converted_book_path)
-            out = subprocess.check_output(cmd_str, shell=True)
-
-            shutil.move(converted_book_path, self.path)
-        except Exception as e:
-            print("  [-] Failed to convert mobi 2 mobi:")
-            print("    |", e)
-            raise ValueError()
-
-        print("[.] Getting ASIN")
-        try:
-            book_asin = self._get_book_asin()
-        except WiseException as e:
-            print("  [-] Can't get ASIN:")
-            for item in e.desc:
-                print("    |", item)
-            raise ValueError()
-
-        return book_asin
-
-
 class WWResult:
     def __init__(self, input_path, output_path):
         if not os.path.exists(input_path):
@@ -428,6 +280,13 @@ class WordWiser:
     def __init__(self, word_processor):
         self.word_processor = word_processor
 
+    def get_logger_for_words(self):
+        wlog = logging.getLogger('word-processing')
+        wlog.setLevel(logging.INFO)
+        fh = logging.FileHandler('result_senses.log')
+        wlog.addHandler(fh)
+        return wlog
+
     def process_glosses(self, lldb, wlog, glosses):
         for gloss in glosses:
             sense = self.word_processor.get_sense(gloss.word)
@@ -437,13 +296,11 @@ class WordWiser:
             yield gloss
 
     def wordwise(self, path_to_book, output_path):
-        try:
-            target = WWResult(path_to_book, output_path)
-            book = Book(target.book_path, WordFilter(get_resource_path("filter.txt")))
-            book_asin = book.get_or_create_asin()
-            glosses = book.get_glosses()
-        except:
-            return
+        target = WWResult(path_to_book, output_path)
+        book = ww_book.Book(target.book_path, get_path_to_mobitool())
+        book_asin = book.get_or_create_asin()
+        glosses = book.get_glosses(WordFilter(get_resource_path("filter.txt")))
+
 
         if len(glosses) == 0:
             print("[.] There are no suitable words in the book")
@@ -451,7 +308,7 @@ class WordWiser:
 
         print("[.] Count of words: {}".format(len(glosses)))
 
-        wlog = get_logger_for_words()
+        wlog = self.get_logger_for_words()
         with LanguageLayerDb(target.sdr_dir_path, book_asin) as lldb:
             with ProgressBar(len(glosses), "[.] Processing words: ") as pb:
                 for gloss in self.process_glosses(lldb, wlog, glosses):
