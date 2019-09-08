@@ -345,7 +345,7 @@ def main():
         print("    |", e)
         return
 
-    process(args.fi, ".")
+    process(args.fi, os.path.dirname(args.fi))
 
 
 if __name__ == "__main__":
