@@ -11,9 +11,8 @@ You can create wordwise enabled .mobi files for Amazon Kindle by using
 ## standalone
 
 1. You need to have [calibre](https://calibre-ebook.com/) on your device.
-2. If you are on windows, download [executables/wisecreator.exe](https://github.com/tmilovanov/wisecreator/blob/master/executables/wisecreator.exe)
-3. If you are on linux, download [executables/wisecreator](https://github.com/tmilovanov/wisecreator/blob/master/executables/wisecreator)
-4. Finally run the below commands in a shell  
+2. Go to [Releases](https://github.com/tmilovanov/wisecreator/releases) and download wisecreator version for your operating system (`wisecreator.exe` for windows, `wisecreator` for linux)
+3. Finally run the below commands in a shell  
     Windows: `wisecreator.exe PATH_TO_YOUR_MOBI_BOOK`   
     Linux &nbsp; &nbsp; &nbsp;: `./wisecreator PATH_TO_YOUR_MOBI_BOOK`
 
