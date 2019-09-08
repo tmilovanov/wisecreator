@@ -1,5 +1,7 @@
 # WiseCreator
 
+[![Build status](https://ci.appveyor.com/api/projects/status/a1facjlt6ij1bt5q?svg=true)](https://ci.appveyor.com/project/tmilovanov/wisecreator)
+
 You can create wordwise enabled .mobi files for Amazon Kindle by using
 - either [standalone executables](#standalone) or
 - [pure python script](#script) (runs faster)
