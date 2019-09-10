@@ -230,27 +230,23 @@ class WordProcessor:
         self.sense_provider = sense_provider
         self.word_filter = word_filter
 
-    def normalize_word(self, word):
-        def get_wordnet_pos(treebank_tag):
-            if treebank_tag.startswith('J'):
-                return nltk.corpus.wordnet.ADJ
-            elif treebank_tag.startswith('V'):
-                return nltk.corpus.wordnet.VERB
-            elif treebank_tag.startswith('N'):
-                return nltk.corpus.wordnet.NOUN
-            elif treebank_tag.startswith('R'):
-                return nltk.corpus.wordnet.ADV
-            else:
-                return nltk.corpus.wordnet.NOUN
+    def get_lemma(self, word):
+        def get_part_of_speech(word):
+            pos = nltk.pos_tag([word])[0][1][0]
+
+            if pos == 'J': return nltk.corpus.wordnet.ADJ
+            if pos == 'V': return nltk.corpus.wordnet.VERB
+            if pos == 'N': return nltk.corpus.wordnet.NOUN
+            if pos == 'R': return nltk.corpus.wordnet.ADV
+
+            return nltk.corpus.wordnet.NOUN
 
         word = word.lower()
-        pos_tag = nltk.pos_tag([word])[0][1]
-        pos_tag_wordnet = get_wordnet_pos(pos_tag)
-        return self.lemmatizer.lemmatize(word, pos=pos_tag_wordnet)
+        return self.lemmatizer.lemmatize(word, pos=get_part_of_speech(word))
 
     def get_sense(self, word):
         if self.word_filter.is_take_word(word):
-            return self.sense_provider.get_sense(self.normalize_word(word))
+            return self.sense_provider.get_sense(self.get_lemma(word))
         else:
             return None
 
