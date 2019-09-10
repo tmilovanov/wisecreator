@@ -14,11 +14,10 @@ class Gloss:
 
 
 class RawmlRarser(HTMLParser):
-    def __init__(self, book_content, word_filter, *args, **kwargs):
+    def __init__(self, book_content, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.bt = book_content
         self.result = []
-        self.wf = word_filter
         self.last_token_offset = 0
         self.last_token_bt_offset = 0
 
@@ -36,13 +35,12 @@ class RawmlRarser(HTMLParser):
         paragraph_text = data
         for match in re.finditer(r'[A-Za-z\']+', paragraph_text):
             word = paragraph_text[match.start():match.end()]
-            if self.wf.is_take_word(word):
-                word_offset = self.getpos()[1] + match.start()
-                word_byte_offset = self.last_token_bt_offset + len(
-                    self.bt[self.last_token_offset:word_offset].encode('utf-8'))
-                self.last_token_offset = word_offset
-                self.last_token_bt_offset = word_byte_offset
-                self.result.append(Gloss(offset=word_byte_offset, word=word))
+            word_offset = self.getpos()[1] + match.start()
+            word_byte_offset = self.last_token_bt_offset + len(
+                self.bt[self.last_token_offset:word_offset].encode('utf-8'))
+            self.last_token_offset = word_offset
+            self.last_token_bt_offset = word_byte_offset
+            self.result.append(Gloss(offset=word_byte_offset, word=word))
 
 
 class Book:
@@ -72,7 +70,7 @@ class Book:
             message = ["Failed to open {} - {}".format(path_to_rawml, e)]
             raise WiseException("", message)
 
-    def get_glosses(self, word_filter):
+    def get_glosses(self):
         print("[.] Getting rawml content of the book")
         try:
             book_content = self.get_rawml_content()
@@ -82,7 +80,7 @@ class Book:
             raise ValueError()
 
         print("[.] Collecting words")
-        parser = RawmlRarser(book_content, word_filter)
+        parser = RawmlRarser(book_content)
         words = parser.parse()
         return words
 

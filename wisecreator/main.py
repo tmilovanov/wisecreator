@@ -224,10 +224,11 @@ class SenseProvider:
 
 
 class WordProcessor:
-    def __init__(self, path_to_nltk_data, sense_provider):
+    def __init__(self, path_to_nltk_data, word_filter, sense_provider):
         #nltk.data.path = [path_to_nltk_data] + nltk.data.path
         self.lemmatizer = nltk.WordNetLemmatizer()
         self.sense_provider = sense_provider
+        self.word_filter = word_filter
 
     def normalize_word(self, word):
         def get_wordnet_pos(treebank_tag):
@@ -248,7 +249,10 @@ class WordProcessor:
         return self.lemmatizer.lemmatize(word, pos=pos_tag_wordnet)
 
     def get_sense(self, word):
-        return self.sense_provider.get_sense(self.normalize_word(word))
+        if self.word_filter.is_take_word(word):
+            return self.sense_provider.get_sense(self.normalize_word(word))
+        else:
+            return None
 
 class WWResult:
     def __init__(self, input_path, output_path):
@@ -304,8 +308,7 @@ class WordWiser:
         target = WWResult(path_to_book, output_path)
         book = ww_book.Book(target.book_path, get_path_to_mobitool())
         book_asin = book.get_or_create_asin()
-        glosses = book.get_glosses(WordFilter(get_path_to_data("filter.txt")))
-
+        glosses = book.get_glosses()
 
         if len(glosses) == 0:
             print("[.] There are no suitable words in the book")
@@ -326,7 +329,9 @@ class WordWiser:
 def process(path_to_book, output_path):
     path_to_script = os.path.dirname(os.path.realpath(__file__))
     path_to_nltk_data = os.path.join(path_to_script, "nltk_data")
-    word_processor = WordProcessor(path_to_nltk_data, SenseProvider(get_path_to_data("senses.csv")))
+    word_processor = WordProcessor(path_to_nltk_data,
+                                   WordFilter(get_path_to_data("filter.txt")),
+                                   SenseProvider(get_path_to_data("senses.csv")))
 
     ww = WordWiser(word_processor)
     ww.wordwise(path_to_book, output_path)
