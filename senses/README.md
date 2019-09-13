@@ -1,8 +1,8 @@
 # senses
 
-Run `senses.py` can help you generate `senses.csv`.
+Run `main.py` can help you generate `senses.csv`.
 
-Words in `all.csv` will show if you enable WordWise, and you can find the id in `WordWise.kll.en.en.db` like below.
+Words in `all.csv` will show if you enable WordWise, and you can find the id in `WordWise.kll.en.en.db` like below. 
 
 ```
 #/data/data/com.amazon.kindle/databases/wordwise/WordWise.kll.en.en.db
@@ -17,6 +17,8 @@ id      term_lemma_id
 
 #directive,170
 ```
+
+You can also run `db2csv.py` to generate your `all.csv` if you have `WordWise.kll.en.en.db`.
 
 ## value
 
