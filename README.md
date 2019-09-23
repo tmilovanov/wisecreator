@@ -6,6 +6,8 @@ You can create wordwise enabled .mobi files for Amazon Kindle by using
 - either [standalone executables](#standalone) or
 - [pure python script](#script) (runs faster)
 
+To enable wordwise, the lang meta data of your .mobi files should be set to `eng`. You can use `ebook-meta example.mobi -l eng` to change the meta data.
+
 ---
 
 ## standalone
