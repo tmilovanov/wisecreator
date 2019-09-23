@@ -7,6 +7,7 @@ from html.parser import HTMLParser
 
 from wisecreator.common import WiseException
 
+
 @dataclass
 class Gloss:
     offset: int
@@ -59,9 +60,9 @@ class Book:
             description = ["Failed to run command", command_str, e]
             raise WiseException("", description)
 
+        rawml_name = "{}.rawml".format(self.f_name)
+        path_to_rawml = os.path.join(os.path.dirname(self.path), rawml_name)
         try:
-            rawml_name = "{}.rawml".format(self.f_name)
-            path_to_rawml = os.path.join(os.path.dirname(self.path), rawml_name)
             with open(path_to_rawml, 'rt', encoding='utf-8') as f:
                 book_content = f.read()
             os.remove(path_to_rawml)
@@ -102,14 +103,14 @@ class Book:
                 return book_asin
             else:
                 return None
-        except Exception as e:
+        except Exception:
             message = ["Failed to decode mobitool output"]
             raise WiseException("", message)
 
     def get_or_create_asin(self):
         print("[.] Getting ASIN")
         book_asin = self._get_book_asin()
-        if book_asin != None:
+        if book_asin is not None:
             return book_asin
         else:
             print("  [-] No ASIN found generating new one")

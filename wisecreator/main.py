@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-
-import sqlite3
-import subprocess
-import sys
 import os
+import sys
 import shutil
-import time
-import nltk
-import platform
-import cursor
-import argparse
+import sqlite3
 import logging
+import platform
+import argparse
+import subprocess
 from dataclasses import dataclass
 
+import nltk
+import cursor
+
 from wisecreator import book as ww_book
+
 
 def get_resource_path(relative_path):
     try:
@@ -32,6 +32,7 @@ def get_path_to_data(data_name):
 def get_path_to_mobitool():
     path_to_third_party = get_resource_path("third_party")
 
+    path_to_mobitool = ""
     if platform.system() == "Linux":
         path_to_mobitool = os.path.join(path_to_third_party, "mobitool-linux-i386")
     if platform.system() == "Windows":
@@ -45,7 +46,7 @@ def get_path_to_mobitool():
 def check_dependencies():
     try:
         subprocess.check_output('ebook-convert --version', shell=True)
-    except FileNotFoundError as e:
+    except FileNotFoundError:
         raise ValueError("Calibre not found")
 
     '''
@@ -57,7 +58,6 @@ def check_dependencies():
     path_to_mobitool = get_path_to_mobitool()
     if not os.path.exists(path_to_mobitool):
         raise ValueError(path_to_mobitool + " not found")
-
 
 
 class ProgressBarImpl:
@@ -107,8 +107,7 @@ class WordFilter:
                 self.do_not_take.append(word)
 
     def is_take_word(self, word):
-        lword = word.lower()
-
+        word = word.lower()
         if word in self.do_not_take:
             return False
 
@@ -119,6 +118,7 @@ class WordFilter:
 
         return True
 
+
 class LangLayerInserter:
     def __init__(self, path_to_dir, book_asin):
         self.asin = book_asin
@@ -127,10 +127,15 @@ class LangLayerInserter:
         self.path_to_dir = path_to_dir
         self.open_db()
         try:
-            query = "CREATE TABLE glosses (start INTEGER PRIMARY KEY, end INTEGER, difficulty INTEGER, sense_id INTEGER, low_confidence BOOLEAN)"
-            r = self.cursor.execute(query)
+            query = "CREATE TABLE glosses ("\
+                    "start INTEGER PRIMARY KEY,"\
+                    "end INTEGER,"\
+                    "difficulty INTEGER,"\
+                    "sense_id INTEGER,"\
+                    "low_confidence BOOLEAN)"
+            self.cursor.execute(query)
             query = "CREATE TABLE metadata (key TEXT, value TEXT)"
-            r = self.cursor.execute(query)
+            self.cursor.execute(query)
         except sqlite3.Error as e:
             print(e)
 
@@ -154,13 +159,13 @@ class LangLayerInserter:
         try:
             for key, value in metadata.items():
                 query = "INSERT INTO metadata VALUES (?, ?)"
-                r = self.cursor.execute(query, (key, value))
+                self.cursor.execute(query, (key, value))
             self.conn.commit()
         except sqlite3.Error as e:
             print(e)
 
     def open_db(self):
-        if self.conn == None:
+        if self.conn is None:
             db_name = "LanguageLayer.en.{}.kll".format(self.asin)
             path_to_db = os.path.join(self.path_to_dir, db_name)
             self.conn = sqlite3.connect(path_to_db)
@@ -182,8 +187,9 @@ class LangLayerInserter:
             query = "INSERT INTO glosses VALUES (?,?,?,?,?)"
             new_gloss = (start, None, difficulty, sense_id, 0)
             self.cursor.execute(query, new_gloss)
-        except sqlite3.Error as e:
+        except sqlite3.Error:
             pass
+
 
 class LanguageLayerDb:
     def __init__(self, path_to_dir, book_asin):
@@ -200,20 +206,25 @@ class LanguageLayerDb:
 
 @dataclass
 class Sense:
-    id : int
-    difficulty : int
+    id: int
+    difficulty: int
 
 
 class SenseProvider:
     def __init__(self, path_to_senses):
+        def is_phrase(target_line):
+            if target_line[0] == '"':
+                return True
+            return False
+
         self.senses = {}
         with open(path_to_senses, 'rb') as f:
             f = f.read().decode('utf-8')
             for line in f.splitlines():
-                l = line.strip()
-                if l[0] == '"':
+                line = line.strip()
+                if is_phrase(line):
                     continue
-                word, sense_id, difficulty = l.split(',')
+                word, sense_id, difficulty = line.split(',')
                 self.senses[word] = Sense(sense_id, difficulty)
 
     def get_sense(self, word):
@@ -225,19 +236,23 @@ class SenseProvider:
 
 class WordProcessor:
     def __init__(self, path_to_nltk_data, word_filter, sense_provider):
-        #nltk.data.path = [path_to_nltk_data] + nltk.data.path
+        # nltk.data.path = [path_to_nltk_data] + nltk.data.path
         self.lemmatizer = nltk.WordNetLemmatizer()
         self.sense_provider = sense_provider
         self.word_filter = word_filter
 
     def get_lemma(self, word):
-        def get_part_of_speech(word):
-            pos = nltk.pos_tag([word])[0][1][0]
+        def get_part_of_speech(target_word):
+            pos = nltk.pos_tag([target_word])[0][1][0]
 
-            if pos == 'J': return nltk.corpus.wordnet.ADJ
-            if pos == 'V': return nltk.corpus.wordnet.VERB
-            if pos == 'N': return nltk.corpus.wordnet.NOUN
-            if pos == 'R': return nltk.corpus.wordnet.ADV
+            if pos == 'J':
+                return nltk.corpus.wordnet.ADJ
+            if pos == 'V':
+                return nltk.corpus.wordnet.VERB
+            if pos == 'N':
+                return nltk.corpus.wordnet.NOUN
+            if pos == 'R':
+                return nltk.corpus.wordnet.ADV
 
             return nltk.corpus.wordnet.NOUN
 
@@ -249,6 +264,7 @@ class WordProcessor:
             return self.sense_provider.get_sense(self.get_lemma(word))
         else:
             return None
+
 
 class WWResult:
     def __init__(self, input_path, output_path):
