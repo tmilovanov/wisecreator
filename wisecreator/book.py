@@ -34,7 +34,7 @@ class RawmlRarser(HTMLParser):
 
     def handle_data(self, data):
         paragraph_text = data
-        for match in re.finditer(r'[A-Za-z\']+', paragraph_text):
+        for match in re.finditer(r'[A-Za-z\'-]+', paragraph_text):
             word = paragraph_text[match.start():match.end()]
             word_offset = self.getpos()[1] + match.start()
             word_byte_offset = self.last_token_bt_offset + len(
