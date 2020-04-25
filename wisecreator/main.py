@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 import os
 import sys
+import stat
 import shutil
 import sqlite3
 import logging
@@ -34,12 +35,18 @@ def get_path_to_mobitool():
 
     path_to_mobitool = ""
     if platform.system() == "Linux":
-        path_to_mobitool = os.path.join(path_to_third_party, "mobitool-linux-i386")
+        if sys.maxsize > 2**32:
+            path_to_mobitool = os.path.join(path_to_third_party, "mobitool-linux-x86_64")
+        else:
+            path_to_mobitool = os.path.join(path_to_third_party, "mobitool-linux-i386")
     if platform.system() == "Windows":
         path_to_mobitool = os.path.join(path_to_third_party, "mobitool-win32.exe")
     if platform.system() == "Darwin":
         path_to_mobitool = os.path.join(path_to_third_party, "mobitool-osx-x86_64")
 
+    # add executed permission
+    current_permission = os.stat(path_to_mobitool)
+    os.chmod(path_to_mobitool, current_permission.st_mode | stat.S_IEXEC)
     return path_to_mobitool
 
 
