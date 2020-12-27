@@ -1,0 +1,31 @@
+name: nightly
+
+on:
+  push:
+    branches:
+    - master
+
+jobs:
+  build:
+
+    runs-on: windows-2019
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Set up Python 3.7
+      uses: actions/setup-python@v2
+      with:
+        python-version: '3.7' 
+    - name: Build wisecreator
+      run: |
+        pip install pyinstaller==4.1 nltk==3.4.5
+        pip install .
+        python -m nltk.downloader wordnet
+        pyinstaller --onefile --noupx --log-level=WARN --clean -n wisecreator --add-data="wisecreator/data/filter.txt;./data/" --add-data="wisecreator/data/senses.csv;./data/" --add-data="wisecreator/third_party;./third_party" ./wisecreator/main.py
+    - name: Upload wisecreator to Releases
+      uses: svenstaro/upload-release-action@v2
+      with:
+        repo_token: ${{ secrets.GITHUB_TOKEN }}
+        file: dist/wisecreator.exe
+        tag: nightly
+        overwrite: true
