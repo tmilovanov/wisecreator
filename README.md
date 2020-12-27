@@ -43,6 +43,6 @@ To enable wordwise, the lang meta data of your .mobi files should be set to `eng
 
 To develop:
 
-You need pyinstaller to pack executables. You can install it with pip.
-Sample pyinstaller commandline: 
+You need pyinstaller to pack executables. You can install it with pip. 
+For example, you can run this to create an Windows executable: 
 `pyinstaller --onefile --add-data=".\third_party;.\third_party" --add-data=".\data;.\data" main.py`
