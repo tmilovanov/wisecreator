@@ -17,13 +17,15 @@ import cursor
 from wisecreator import book as ww_book
 
 
-def get_resource_path(relative_path):
-    try:
-        base_path = sys._MEIPASS
-    except Exception:
+def get_resource_path(rsrc_relative_path):
+    if getattr(sys, 'frozen', False): # Running as compiled with pyinstaller
+        # sys._MEIPASS exists only when application is running as compiled with pyinstaller application
+        # pylint comment is added, to disable IDE warning on the next line
+        base_path = sys._MEIPASS # pylint: disable=no-member
+    else:
         base_path = os.path.dirname(os.path.realpath(__file__))
 
-    return os.path.join(base_path, relative_path)
+    return os.path.join(base_path, rsrc_relative_path)
 
 
 def get_path_to_data(data_name):
@@ -53,14 +55,8 @@ def get_path_to_mobitool():
 def check_dependencies():
     try:
         subprocess.check_output('ebook-convert --version', shell=True)
-    except FileNotFoundError:
-        raise ValueError("Calibre not found")
-
-    '''
-    path_to_nltk = get_resource_path("nltk_data")
-    if not os.path.exists(path_to_nltk):
-        raise ValueError(path_to_nltk + " not found")
-'''
+    except subprocess.CalledProcessError:
+        raise ValueError("Calibre not installed")
 
     path_to_mobitool = get_path_to_mobitool()
     if not os.path.exists(path_to_mobitool):
