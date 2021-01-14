@@ -361,7 +361,7 @@ def main():
     parser.add_argument("fi", type=str, metavar="PATH_TO_YOUR_BOOK")
     args = parser.parse_args()
 
-    print("[.] Checking dependenices")
+    print("[.] Checking dependencies")
     try:
         check_dependencies()
     except ValueError as e:
