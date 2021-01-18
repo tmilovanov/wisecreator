@@ -26,7 +26,7 @@ To enable wordwise, the lang meta data of your .mobi files should be set to `eng
 2.  Download and install [Python3](https://www.python.org/downloads/).
     If your python has been build from source install `pysqlite3` additionally
 3.  From this project folder run `python -m pip install .`
-4.  Finally run wisecreator: `wisecreator PATH_TO_YOUR_BOOK`
+4.  Finally run wisecreator: `python -m wisecreator.main PATH_TO_YOUR_BOOK`
 
 ---
 
@@ -43,4 +43,6 @@ To enable wordwise, the lang meta data of your .mobi files should be set to `eng
 
 To develop:
 
-You need pyinstaller to pack executables. You can install it with pip.
+You need pyinstaller to pack executables. You can install it with pip. 
+For example, you can run this to create a Windows executable: 
+`pyinstaller --onefile --add-data=".\third_party;.\third_party" --add-data=".\data;.\data" main.py`
