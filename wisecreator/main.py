@@ -306,7 +306,7 @@ class WordWiser:
 
     def get_logger_for_words(self):
         wlog = logging.getLogger('word-processing')
-        wlog.setLevel(logging.INFO)
+        wlog.setLevel(logging.DEBUG)
         fh = logging.FileHandler('result_senses.log')
         wlog.addHandler(fh)
         return wlog
