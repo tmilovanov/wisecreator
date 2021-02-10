@@ -1,12 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 import os
-import sys
-import stat
 import shutil
 import sqlite3
 import logging
-import platform
 import argparse
 import subprocess
 from dataclasses import dataclass
@@ -15,42 +12,7 @@ import nltk
 import cursor
 
 from wisecreator import book as ww_book
-
-
-def get_resource_path(rsrc_relative_path):
-    if getattr(sys, 'frozen', False): # Running as compiled with pyinstaller
-        # sys._MEIPASS exists only when application is running as compiled with pyinstaller application
-        # pylint comment is added, to disable IDE warning on the next line
-        base_path = sys._MEIPASS # pylint: disable=no-member
-    else:
-        base_path = os.path.dirname(os.path.realpath(__file__))
-
-    return os.path.join(base_path, rsrc_relative_path)
-
-
-def get_path_to_data(data_name):
-    return os.path.join(get_resource_path("data"), data_name)
-
-
-def get_path_to_mobitool():
-    path_to_third_party = get_resource_path("third_party")
-
-    path_to_mobitool = ""
-    if platform.system() == "Linux":
-        if sys.maxsize > 2**32:
-            path_to_mobitool = os.path.join(path_to_third_party, "mobitool-linux-x86_64")
-        else:
-            path_to_mobitool = os.path.join(path_to_third_party, "mobitool-linux-i386")
-    if platform.system() == "Windows":
-        path_to_mobitool = os.path.join(path_to_third_party, "mobitool-win32.exe")
-    if platform.system() == "Darwin":
-        path_to_mobitool = os.path.join(path_to_third_party, "mobitool-osx-x86_64")
-
-    # add executed permission
-    current_permission = os.stat(path_to_mobitool)
-    os.chmod(path_to_mobitool, current_permission.st_mode | stat.S_IEXEC)
-    return path_to_mobitool
-
+from wisecreator.utils import get_path_to_mobitool, get_path_to_data
 
 def check_dependencies():
     try:

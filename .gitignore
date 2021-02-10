@@ -133,5 +133,6 @@ venv.bak/
 .mypy_cache/
 
 *.code-workspace
+.vscode/
 
 wiki/

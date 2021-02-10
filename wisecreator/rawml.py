@@ -50,11 +50,22 @@ class RawmlRarser(HTMLParser):
         return result
 
     def handle_data(self, tag_content):
-        for word, start, _ in iter_english_words(tag_content):
-            word_byte_offset = self.get_word_byte_offset(tag_content, start)
-            self.result.append(Gloss(offset=word_byte_offset, word=word))
+        line_number, tag_content_offset = self.getpos()
+        line_number = line_number - 1  # Line numbers in HTMLParser enumerated starting from 1, not from 0
+        bytes_before_line = self.lines_length[line_number]
+        bytes_before_tag_content = len(self.lines[line_number][:tag_content_offset].encode("utf-8"))
+        last_token_end = 0
+
+        for start, end in iter_english_words(tag_content):
+            bytes_before_word = len(tag_content[:start].encode("utf-8"))
+            result = 0
+            result += bytes_before_line
+            result += bytes_before_tag_content
+            result += bytes_before_word
+
+            self.result.append(Gloss(offset=result, word=tag_content[start:end]))
 
 
 def iter_english_words(text):
     for match in re.finditer(r'[A-Za-z\'-]+', text):
-        yield text[match.start():match.end()], match.start(), match.end()
+        yield match.start(), match.end()

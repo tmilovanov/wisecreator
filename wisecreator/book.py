@@ -7,10 +7,10 @@ from pathlib import Path
 
 from wisecreator.common import WiseException
 from wisecreator.rawml import RawmlRarser
-from wisecreator.utils import run_process, prepare_empty_folder
+from wisecreator.utils import (run_process, prepare_empty_folder, block_print, enable_print,
+                               get_path_to_kindle_unpack, get_path_to_py_interpreter)
+from wisecreator.third_party.KindleUnpack.lib.kindleunpack import unpackBook
 
-def get_py_interpreter():
-    return Path(sys.prefix) / "python.exe"
 
 class Book:
     def __init__(self, path, mobitool_path):
@@ -26,12 +26,12 @@ class Book:
         except WiseException as e:
             print("  [-] Can't get rawml content:")
             print("    |", e)
-            raise ValueError()
+            raise
 
         print("[.] Collecting words")
         parser = RawmlRarser(book_content)
         words = parser.parse()
-        
+
         return words
 
     def get_or_create_asin(self):
@@ -63,42 +63,31 @@ class Book:
             raise ValueError()
 
         return book_asin
-    
+
     def _book_type(self) -> str:
         # ".azw3" -> "azw3"
         # ".mobi" -> "mobi"
         # ...
         return self.f_ext[1:]
-    
-    def _get_kindle_unpack_path(self) -> Path:
-        cur_file_dir = Path(os.path.abspath(__file__)).parent
-        return cur_file_dir / "third_party" / "KindleUnpack" / "lib" / "kindleunpack.py"
-    
+
     def _unpack_book(self) -> Path:
         unpack_path = self.path.parent / "unpacked"
         prepare_empty_folder(unpack_path)
 
-        command = [
-            get_py_interpreter(),
-            self._get_kindle_unpack_path(),
-             "-d",
-             self.path,
-             unpack_path
-        ]
+        block_print()
         try:
-            res = run_process(command)
-            if res.returncode != 0:
-                raise Exception(f"bad return code: {res.returncode}")
+            unpackBook(str(self.path), str(unpack_path), None, '2', False, True)
         except Exception as e:
-            command_str = " ".join(map(str, command))
-            description = ["Failed to run command", command_str, e]
+            description = ["Failed to unpack book", e]
             raise WiseException("", description)
-    
+        finally:
+            enable_print()
+
         return unpack_path
-    
+
     def _get_rawml_content(self):
         unpack_path = self._unpack_book()
-        
+
         if self._book_type() == "azw3":
             path_to_rawml = unpack_path / "mobi8" / "assembled_text.dat"
         elif self._book_type() == "mobi":
@@ -106,7 +95,8 @@ class Book:
 
         try:
             with open(path_to_rawml, 'rt', encoding='utf-8') as f:
-                return f.read()
+                book_content = f.read()
+            return book_content
         except UnicodeDecodeError as e:
             message = ["Failed to open {} - {}".format(path_to_rawml, e)]
             raise WiseException("", message)
