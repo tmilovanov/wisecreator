@@ -2,7 +2,7 @@
 
 [![Build status](https://ci.appveyor.com/api/projects/status/a1facjlt6ij1bt5q?svg=true)](https://ci.appveyor.com/project/tmilovanov/wisecreator)
 
-
+<img src="./resources/result.png" alt="result" style="zoom: 50%;" />
 
 ## FAQ
 
