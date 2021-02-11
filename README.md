@@ -2,7 +2,22 @@
 
 [![Build status](https://ci.appveyor.com/api/projects/status/a1facjlt6ij1bt5q?svg=true)](https://ci.appveyor.com/project/tmilovanov/wisecreator)
 
-You can create wordwise enabled .mobi files for Amazon Kindle by using
+
+
+## FAQ
+
+- Which book formats are supported?
+  - AZW3, MOBI
+- What OS do I need to run the tool?
+  - Windows, Linux or Mac OS (But for Mac OS you need to follow the usage way, described in "script" paragraph)
+- I used this tool but word wise didn't appear on my device, what should I do?
+  - Describe what you did and send me your book to timcess@gmail.com
+
+------
+
+## How to use
+
+You can create wordwise enabled books for Amazon Kindle by using
 - either [standalone executables](#standalone) or
 - [pure python script](#script) (runs faster)
 
@@ -25,8 +40,8 @@ To enable wordwise, the lang meta data of your .mobi files should be set to `eng
 1.  Install [calibre](https://calibre-ebook.com/)
 2.  Download and install [Python3](https://www.python.org/downloads/).
     If your python has been build from source install `pysqlite3` additionally
-3.  From this project folder run `python -m pip install .`
-4.  Finally run wisecreator: `python -m wisecreator.main PATH_TO_YOUR_BOOK`
+3.  From this project folder run `python3 -m pip install .`
+4.  Finally run wisecreator: `python3 -m wisecreator.main PATH_TO_YOUR_BOOK`
 
 ---
 
@@ -41,8 +56,3 @@ To enable wordwise, the lang meta data of your .mobi files should be set to `eng
 
 ---
 
-To develop:
-
-You need pyinstaller to pack executables. You can install it with pip. 
-For example, you can run this to create a Windows executable: 
-`pyinstaller --onefile --add-data=".\third_party;.\third_party" --add-data=".\data;.\data" main.py`
