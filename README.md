@@ -45,8 +45,7 @@ To enable wordwise, the lang meta data of your .mobi files should be set to `eng
     python3 -m pip install wheel
     python3 -m pip install .
 ```
-4.  From this project folder run 
-5.  Finally run wisecreator: `python3 -m wisecreator.main PATH_TO_YOUR_BOOK`
+4.  Finally run wisecreator: `python3 -m wisecreator.main PATH_TO_YOUR_BOOK`
 
 ---
 
