@@ -27,13 +27,13 @@ setup(
         'wisecreator':['data/*', 'third_party/*']
     },
     install_requires=[
-        'nltk==3.4.5',
+        'nltk==3.9',
         'cursor==1.3.4',
         'six==1.12.0',
         'dataclasses',
     ],
     setup_requires=[
-        'nltk==3.4.5',
+        'nltk==3.9',
     ],
     cmdclass={
       'install': PostInstallCommand,
